@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Play, Pause, SkipForward, SkipBack, Plus, Trash2, List, Minimize2, Maximize2, X, Music, Youtube } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { Play, Pause, SkipForward, SkipBack, Plus, Trash2, List, Minimize2, Youtube } from 'lucide-react';
 
 interface MediaItem {
   id: string;
@@ -8,17 +8,26 @@ interface MediaItem {
   videoId: string;
 }
 
-export const MediaPlayer: React.FC = () => {
-  const [isMinimized, setIsMinimized] = useState(true);
+interface MediaPlayerProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onPlayingChange: (isPlaying: boolean) => void;
+}
+
+export const MediaPlayer: React.FC<MediaPlayerProps> = ({ isOpen, onClose, onPlayingChange }) => {
   const [playlist, setPlaylist] = useState<MediaItem[]>([]);
   const [currentIndex, setCurrentIndex] = useState<number>(0);
+  
+  // Player State
+  const [isPlaying, setIsPlaying] = useState(false);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
   
   // Input State
   const [inputUrl, setInputUrl] = useState('');
   const [inputTitle, setInputTitle] = useState('');
   const [showPlaylist, setShowPlaylist] = useState(false);
 
-  // Extract YouTube ID
+  // Extract YouTube ID (Robust Regex)
   const getYouTubeId = (url: string) => {
     const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
     const match = url.match(regExp);
@@ -30,7 +39,7 @@ export const MediaPlayer: React.FC = () => {
     
     const videoId = getYouTubeId(inputUrl);
     if (!videoId) {
-      alert("Link YouTube tidak valid!");
+      alert("Link YouTube tidak valid! Gunakan link seperti https://www.youtube.com/watch?v=...");
       return;
     }
 
@@ -41,14 +50,15 @@ export const MediaPlayer: React.FC = () => {
       videoId: videoId
     };
 
-    setPlaylist([...playlist, newItem]);
+    const newPlaylist = [...playlist, newItem];
+    setPlaylist(newPlaylist);
     setInputUrl('');
     setInputTitle('');
     
     // Auto play if it's the first item
-    if (playlist.length === 0) {
+    if (newPlaylist.length === 1) {
       setCurrentIndex(0);
-      setIsMinimized(false);
+      setIsPlaying(true);
     }
   };
 
@@ -59,6 +69,8 @@ export const MediaPlayer: React.FC = () => {
     
     if (index === currentIndex && newPlaylist.length > 0) {
       setCurrentIndex(index >= newPlaylist.length ? 0 : index);
+    } else if (newPlaylist.length === 0) {
+      setIsPlaying(false);
     }
   };
 
@@ -66,44 +78,61 @@ export const MediaPlayer: React.FC = () => {
     if (confirm("Hapus semua playlist?")) {
       setPlaylist([]);
       setCurrentIndex(0);
+      setIsPlaying(false);
     }
   };
 
   const handleNext = () => {
     if (playlist.length === 0) return;
     setCurrentIndex((prev) => (prev + 1) % playlist.length);
+    setIsPlaying(true);
   };
 
   const handlePrev = () => {
     if (playlist.length === 0) return;
     setCurrentIndex((prev) => (prev - 1 + playlist.length) % playlist.length);
+    setIsPlaying(true);
   };
 
-  // Widget Classes
-  const widgetClasses = `fixed bottom-4 right-4 bg-slate-900 text-white rounded-xl shadow-2xl z-[100] transition-all duration-300 border border-slate-700 overflow-hidden flex flex-col ${isMinimized ? 'w-16 h-16 rounded-full' : 'w-80 md:w-96 h-[500px]'}`;
+  // --- YOUTUBE CONTROL LOGIC ---
+  
+  // Send command to YouTube Iframe
+  const sendCommand = (command: string) => {
+    if (iframeRef.current && iframeRef.current.contentWindow) {
+      iframeRef.current.contentWindow.postMessage(
+        JSON.stringify({ event: 'command', func: command, args: [] }), 
+        '*'
+      );
+    }
+  };
 
-  if (isMinimized) {
-    return (
-      <div className={widgetClasses}>
-        <button 
-          onClick={() => setIsMinimized(false)}
-          className="w-full h-full flex items-center justify-center hover:bg-slate-800 transition-colors relative group"
-        >
-          {playlist.length > 0 ? (
-             <div className="animate-pulse absolute inset-0 bg-red-600/20 rounded-full"></div>
-          ) : null}
-          <Music size={24} className="text-white" />
-          {playlist.length > 0 && (
-             <span className="absolute -top-1 -right-1 bg-red-600 text-[10px] font-bold w-5 h-5 flex items-center justify-center rounded-full border-2 border-slate-900">
-               {playlist.length}
-             </span>
-          )}
-        </button>
-      </div>
-    );
-  }
+  const togglePlay = () => {
+    if (isPlaying) {
+      sendCommand('pauseVideo');
+    } else {
+      sendCommand('playVideo');
+    }
+    setIsPlaying(!isPlaying);
+  };
+
+  // Reset play state when video changes
+  useEffect(() => {
+    if (playlist.length > 0) {
+      setIsPlaying(true);
+    }
+  }, [currentIndex]);
+
+  // Sync playing state with parent
+  useEffect(() => {
+    onPlayingChange(isPlaying);
+  }, [isPlaying, onPlayingChange]);
+
+  // Widget Classes: Use opacity/pointer-events to hide but keep audio playing
+  const widgetClasses = `fixed bottom-4 right-4 bg-slate-900 text-white rounded-xl shadow-2xl z-[100] transition-all duration-300 border border-slate-700 overflow-hidden flex flex-col w-80 md:w-96 h-[500px] ${isOpen ? 'opacity-100 translate-y-0 pointer-events-auto' : 'opacity-0 translate-y-10 pointer-events-none'}`;
 
   const currentVideo = playlist[currentIndex];
+  // Note: origin is required for postMessage to work securely
+  const origin = typeof window !== 'undefined' ? window.location.origin : '';
 
   return (
     <div className={widgetClasses}>
@@ -114,7 +143,9 @@ export const MediaPlayer: React.FC = () => {
             <span className="text-xs font-bold uppercase tracking-wider">Media Player</span>
          </div>
          <div className="flex items-center gap-1">
-            <button onClick={() => setIsMinimized(true)} className="p-1 hover:bg-slate-700 rounded"><Minimize2 size={14}/></button>
+            <button onClick={onClose} className="p-1 hover:bg-slate-700 rounded" title="Minimize">
+                <Minimize2 size={14}/>
+            </button>
          </div>
       </div>
 
@@ -122,15 +153,22 @@ export const MediaPlayer: React.FC = () => {
       <div className="relative w-full pt-[56.25%] bg-black group">
         {currentVideo ? (
           <iframe
+            ref={iframeRef}
+            // KEY IS IMPORTANT: Forces React to re-mount iframe when video changes
+            key={currentVideo.id} 
             className="absolute top-0 left-0 w-full h-full"
-            src={`https://www.youtube.com/embed/${currentVideo.videoId}?autoplay=1&enablejsapi=1`}
+            src={`https://www.youtube.com/embed/${currentVideo.videoId}?autoplay=1&enablejsapi=1&origin=${origin}`}
             title="YouTube video player"
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
             allowFullScreen
+            onLoad={() => {
+                // Try to ensure state sync when iframe loads
+                if (isPlaying) sendCommand('playVideo');
+            }}
           ></iframe>
         ) : (
           <div className="absolute top-0 left-0 w-full h-full flex flex-col items-center justify-center text-slate-500">
-             <Music size={32} className="mb-2 opacity-50"/>
+             <Youtube size={32} className="mb-2 opacity-50"/>
              <span className="text-xs">Playlist Kosong</span>
           </div>
         )}
@@ -149,9 +187,18 @@ export const MediaPlayer: React.FC = () => {
          
          <div className="flex justify-center items-center gap-4 mb-2">
             <button onClick={handlePrev} className="p-2 hover:bg-slate-800 rounded-full text-slate-300 hover:text-white"><SkipBack size={20}/></button>
-            <div className="w-10 h-10 flex items-center justify-center bg-red-600 rounded-full shadow-lg">
-                <Play size={20} fill="white" className="ml-1"/>
-            </div>
+            
+            <button 
+                onClick={togglePlay} 
+                className="w-12 h-12 flex items-center justify-center bg-red-600 rounded-full shadow-lg hover:bg-red-700 transition-colors"
+            >
+                {isPlaying ? (
+                    <Pause size={20} fill="white" className="text-white"/>
+                ) : (
+                    <Play size={20} fill="white" className="text-white ml-1"/>
+                )}
+            </button>
+            
             <button onClick={handleNext} className="p-2 hover:bg-slate-800 rounded-full text-slate-300 hover:text-white"><SkipForward size={20}/></button>
          </div>
 
@@ -168,7 +215,13 @@ export const MediaPlayer: React.FC = () => {
             <div className="flex-1 overflow-y-auto p-2 space-y-1">
                 {playlist.map((item, idx) => (
                    <div key={item.id} className={`flex justify-between items-center p-2 rounded text-xs group ${idx === currentIndex ? 'bg-red-600/20 border border-red-600/50' : 'hover:bg-slate-800'}`}>
-                      <button onClick={() => setCurrentIndex(idx)} className="flex-1 text-left truncate flex items-center gap-2">
+                      <button 
+                        onClick={() => {
+                            setCurrentIndex(idx);
+                            setIsPlaying(true);
+                        }} 
+                        className="flex-1 text-left truncate flex items-center gap-2"
+                      >
                          {idx === currentIndex && <div className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse"></div>}
                          <span className={idx === currentIndex ? 'text-red-400 font-medium' : 'text-slate-300'}>{item.title}</span>
                       </button>

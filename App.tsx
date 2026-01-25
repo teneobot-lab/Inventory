@@ -1,6 +1,5 @@
-
 import React, { useState, useEffect, useRef } from 'react';
-import { LayoutDashboard, Package, ArrowDownLeft, ArrowUpRight, FileBarChart, Settings, Menu, X, LogOut, History as HistoryIcon, Search, Bell, AlertTriangle, ChevronRight, CheckCircle, Ban, Database, ClipboardList, ListPlus, Wifi, Clock, Sun, Moon } from 'lucide-react';
+import { LayoutDashboard, Package, ArrowDownLeft, ArrowUpRight, FileBarChart, Settings, Menu, X, LogOut, History as HistoryIcon, Search, Bell, AlertTriangle, ChevronRight, CheckCircle, Ban, Database, ClipboardList, ListPlus, Wifi, Clock, Sun, Moon, Music } from 'lucide-react';
 import { InventoryItem, Transaction, User, RejectItem, RejectTransaction } from './types';
 import { api } from './services/api';
 import { Dashboard } from './components/Dashboard';
@@ -58,6 +57,10 @@ const App: React.FC = () => {
   // Notification State
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const notificationRef = useRef<HTMLDivElement>(null);
+
+  // Media Player State
+  const [isMediaPlayerOpen, setIsMediaPlayerOpen] = useState(false);
+  const [isMediaPlaying, setIsMediaPlaying] = useState(false);
 
   // --- UI/UX STATE (Time & Connectivity & Theme) ---
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -237,7 +240,12 @@ const App: React.FC = () => {
 
   return (
     <div className={`flex h-screen bg-slate-50 dark:bg-slate-950 overflow-hidden relative transition-colors duration-300 ${isDarkMode ? 'dark' : ''}`}>
-      <MediaPlayer />
+      {/* Media Player Component - Controlled via props */}
+      <MediaPlayer 
+        isOpen={isMediaPlayerOpen} 
+        onClose={() => setIsMediaPlayerOpen(false)} 
+        onPlayingChange={setIsMediaPlaying}
+      />
 
       <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-slate-900 text-white transform transition-transform duration-300 ease-in-out lg:translate-x-0 lg:static lg:inset-0 ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="h-full flex flex-col">
@@ -380,6 +388,19 @@ const App: React.FC = () => {
                    <span className="text-[10px] font-mono text-emerald-400">{latency} ms</span>
                 </div>
              </div>
+
+             {/* Media Player Toggle Button */}
+             <button
+               onClick={() => setIsMediaPlayerOpen(!isMediaPlayerOpen)}
+               className={`p-2 rounded-full transition-all border ${
+                 isMediaPlaying 
+                   ? 'bg-red-500/20 text-red-500 border-red-500/50 animate-pulse shadow-[0_0_10px_rgba(239,68,68,0.5)]' 
+                   : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-white hover:border-slate-500'
+               }`}
+               title={isMediaPlayerOpen ? "Hide Media Player" : "Show Media Player"}
+             >
+               <Music size={18} />
+             </button>
 
              <button
                onClick={() => setIsDarkMode(!isDarkMode)}
