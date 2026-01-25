@@ -12,6 +12,8 @@ import { StockCardModal } from './components/StockCardModal';
 import { RejectMasterData } from './components/RejectMasterData';
 import { RejectTransactionModule } from './components/RejectTransactionModule';
 import { RejectHistory } from './components/RejectHistory';
+// Import Media Player
+import { MediaPlayer } from './components/MediaPlayer';
 
 // Router enum
 enum View {
@@ -182,8 +184,11 @@ const App: React.FC = () => {
   );
 
   return (
-    <div className="flex h-screen bg-slate-50 overflow-hidden">
+    <div className="flex h-screen bg-slate-50 overflow-hidden relative">
       
+      {/* GLOBAL MEDIA PLAYER */}
+      <MediaPlayer />
+
       {/* Sidebar - Desktop */}
       <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-slate-900 text-white transform transition-transform duration-300 ease-in-out lg:translate-x-0 lg:static lg:inset-0 ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="h-full flex flex-col">
