@@ -42,6 +42,8 @@ export interface Transaction {
 export interface User {
   id: string;
   name: string;
+  username: string; // Added
+  password?: string; // Added (Optional because we might not want to display it)
   role: 'admin' | 'staff';
   email: string;
 }

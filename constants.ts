@@ -1,3 +1,4 @@
+
 import { InventoryItem, Transaction, User } from './types';
 
 export const INITIAL_ITEMS: InventoryItem[] = [
@@ -67,6 +68,27 @@ export const INITIAL_TRANSACTIONS: Transaction[] = [
 export const CURRENT_USER: User = {
   id: 'u1',
   name: 'Budi Santoso',
+  username: 'admin',
+  password: 'password123',
   role: 'admin',
   email: 'admin@inventory.com'
 };
+
+export const INITIAL_USERS: User[] = [
+  {
+    id: 'u1',
+    name: 'Budi Santoso',
+    username: 'admin',
+    password: 'password123',
+    role: 'admin',
+    email: 'admin@inventory.com'
+  },
+  {
+    id: 'u2',
+    name: 'Siti Aminah',
+    username: 'staff01',
+    password: 'staffpassword',
+    role: 'staff',
+    email: 'siti@inventory.com'
+  }
+];

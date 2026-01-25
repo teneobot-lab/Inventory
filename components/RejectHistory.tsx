@@ -45,7 +45,7 @@ export const RejectHistory: React.FC<RejectHistoryProps> = ({ transactions, mast
     // Cell: Total Qty (Base)
 
     // 1. Get Unique Dates (Sorted)
-    const uniqueDates: string[] = [...new Set(filteredTransactions.map(t => t.date.split('T')[0]))].sort();
+    const uniqueDates: string[] = Array.from(new Set(filteredTransactions.map(t => t.date.split('T')[0]))).sort();
     
     // 2. Prepare Matrix Data
     // Key: ItemID, Value: { meta: ItemMeta, dates: { [date]: qty } }
