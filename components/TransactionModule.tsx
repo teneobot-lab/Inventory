@@ -29,6 +29,7 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
   const [transactionId, setTransactionId] = useState('');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [referenceNumber, setReferenceNumber] = useState('');
+  const [supplier, setSupplier] = useState(''); // New State for Supplier
   const [notes, setNotes] = useState('');
   const [photos, setPhotos] = useState<string[]>([]);
   
@@ -63,6 +64,7 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
       setTransactionId(initialData.id);
       setDate(initialData.date.split('T')[0]);
       setReferenceNumber(initialData.referenceNumber || '');
+      setSupplier(initialData.supplier || ''); // Load supplier
       setNotes(initialData.notes);
       setPhotos(initialData.photos || []);
       setCart([...initialData.items]);
@@ -77,6 +79,7 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
     setTransactionId(`TX-${Date.now()}-${Math.floor(Math.random()*1000)}`);
     setDate(new Date().toISOString().split('T')[0]);
     setReferenceNumber('');
+    setSupplier(''); // Reset supplier
     setNotes('');
     setPhotos([]);
     setCart([]);
@@ -286,6 +289,7 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
       type,
       date: new Date(date).toISOString(),
       referenceNumber: isIncoming ? referenceNumber : undefined,
+      supplier: isIncoming ? supplier : undefined, // Save supplier only for IN
       notes,
       photos,
       items: cart,
@@ -344,16 +348,28 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
                 </div>
 
                 {isIncoming && (
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Nomor Surat Jalan</label>
-                    <input 
-                      type="text" 
-                      placeholder="e.g. SJ-2023-001"
-                      value={referenceNumber}
-                      onChange={e => setReferenceNumber(e.target.value)}
-                      className="w-full border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-blue-500 outline-none" 
-                    />
-                  </div>
+                  <>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">Nomor Surat Jalan</label>
+                      <input 
+                        type="text" 
+                        placeholder="e.g. SJ-2023-001"
+                        value={referenceNumber}
+                        onChange={e => setReferenceNumber(e.target.value)}
+                        className="w-full border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-blue-500 outline-none" 
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">Nama Supplier</label>
+                      <input 
+                        type="text" 
+                        placeholder="e.g. PT Maju Jaya"
+                        value={supplier}
+                        onChange={e => setSupplier(e.target.value)}
+                        className="w-full border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-blue-500 outline-none" 
+                      />
+                    </div>
+                  </>
                 )}
 
                 <div>

@@ -15,6 +15,7 @@ export const TransactionHistory: React.FC<TransactionHistoryProps> = ({ transact
     const matchesSearch = 
       t.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (t.referenceNumber || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (t.supplier || '').toLowerCase().includes(searchTerm.toLowerCase()) || // Include supplier in search
       t.notes.toLowerCase().includes(searchTerm.toLowerCase());
     
     const matchesType = filterType === 'ALL' || t.type === filterType;
@@ -33,8 +34,8 @@ export const TransactionHistory: React.FC<TransactionHistoryProps> = ({ transact
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400" size={18} />
             <input 
               type="text" 
-              placeholder="Cari ID, No. Ref, Notes..." 
-              className="w-full sm:w-64 pl-10 pr-4 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="Cari ID, No. Ref, Supplier, Notes..." 
+              className="w-full sm:w-72 pl-10 pr-4 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
@@ -65,6 +66,7 @@ export const TransactionHistory: React.FC<TransactionHistoryProps> = ({ transact
                 <th className="px-6 py-4">Tipe</th>
                 <th className="px-6 py-4">Tanggal</th>
                 <th className="px-6 py-4">Ref No</th>
+                <th className="px-6 py-4">Supplier</th>
                 <th className="px-6 py-4">Items</th>
                 <th className="px-6 py-4">Notes</th>
                 <th className="px-6 py-4 text-right">Actions</th>
@@ -87,6 +89,7 @@ export const TransactionHistory: React.FC<TransactionHistoryProps> = ({ transact
                   </td>
                   <td className="px-6 py-4">{new Date(t.date).toLocaleDateString('id-ID')}</td>
                   <td className="px-6 py-4 font-mono text-xs">{t.referenceNumber || '-'}</td>
+                  <td className="px-6 py-4 font-medium text-slate-700">{t.supplier || '-'}</td>
                   <td className="px-6 py-4">
                     <span className="bg-blue-100 text-blue-800 text-xs font-semibold px-2 py-1 rounded">
                       {t.items.length} Items
@@ -105,7 +108,7 @@ export const TransactionHistory: React.FC<TransactionHistoryProps> = ({ transact
               ))}
               {filteredTransactions.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-6 py-12 text-center text-slate-400">
+                  <td colSpan={8} className="px-6 py-12 text-center text-slate-400">
                     <div className="flex flex-col items-center justify-center gap-2">
                        <Search size={32} className="opacity-20"/>
                        <p>Tidak ada transaksi ditemukan.</p>

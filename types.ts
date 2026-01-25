@@ -32,6 +32,7 @@ export interface Transaction {
   type: TransactionType;
   date: string;
   referenceNumber?: string; // Nomor Surat Jalan
+  supplier?: string; // Nama Supplier (Khusus IN)
   notes: string;
   photos?: string[]; // Base64 strings
   items: TransactionItem[];

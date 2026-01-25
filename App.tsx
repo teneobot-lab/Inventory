@@ -14,6 +14,8 @@ import { RejectTransactionModule } from './components/RejectTransactionModule';
 import { RejectHistory } from './components/RejectHistory';
 // Import Media Player
 import { MediaPlayer } from './components/MediaPlayer';
+// Import Report Module
+import { ReportModule } from './components/ReportModule';
 
 // Router enum
 enum View {
@@ -467,12 +469,7 @@ const App: React.FC = () => {
             )}
 
             {currentView === View.REPORTS && (
-              <div className="space-y-6">
-                 <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
-                    <FileBarChart /> Laporan & Analytics
-                 </h2>
-                 <Dashboard items={items} transactions={transactions} />
-              </div>
+              <ReportModule items={items} transactions={transactions} />
             )}
 
             {currentView === View.ADMIN && (
