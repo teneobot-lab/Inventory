@@ -223,7 +223,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ items, onAddIt
         </div>
       )}
 
-      <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
+      <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden flex flex-col">
         <div className="p-4 border-b border-slate-100">
           <div className="relative max-w-sm">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400" size={18} />
@@ -237,11 +237,12 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ items, onAddIt
           </div>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm text-slate-600">
-            <thead className="bg-slate-50 text-slate-700 uppercase text-xs font-semibold">
+        {/* SCROLLABLE TABLE CONTAINER */}
+        <div className="overflow-auto max-h-[65vh]">
+          <table className="w-full text-left text-sm text-slate-600 relative">
+            <thead className="bg-slate-50 text-slate-700 uppercase text-xs font-semibold sticky top-0 z-10 shadow-sm">
               <tr>
-                <th className="px-4 py-4 w-10">
+                <th className="px-4 py-4 w-10 bg-slate-50">
                   <input 
                     type="checkbox" 
                     className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
@@ -249,13 +250,13 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ items, onAddIt
                     onChange={toggleSelectAll}
                   />
                 </th>
-                <th className="px-6 py-4">Item Name</th>
-                <th className="px-6 py-4">SKU</th>
-                <th className="px-6 py-4">Stock</th>
-                <th className="px-6 py-4">Units</th>
-                <th className="px-6 py-4">Price</th>
-                <th className="px-6 py-4">Status</th>
-                <th className="px-6 py-4 text-right">Actions</th>
+                <th className="px-6 py-4 bg-slate-50">Item Name</th>
+                <th className="px-6 py-4 bg-slate-50">SKU</th>
+                <th className="px-6 py-4 bg-slate-50">Stock</th>
+                <th className="px-6 py-4 bg-slate-50">Units</th>
+                <th className="px-6 py-4 bg-slate-50">Price</th>
+                <th className="px-6 py-4 bg-slate-50">Status</th>
+                <th className="px-6 py-4 text-right bg-slate-50">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">

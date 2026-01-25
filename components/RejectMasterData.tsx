@@ -126,7 +126,7 @@ export const RejectMasterData: React.FC<RejectMasterDataProps> = ({ items, onAdd
         </div>
       </div>
 
-      <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
+      <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden flex flex-col">
         <div className="p-4 border-b border-slate-100">
           <div className="relative max-w-sm">
              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
@@ -138,47 +138,51 @@ export const RejectMasterData: React.FC<RejectMasterDataProps> = ({ items, onAdd
              />
           </div>
         </div>
-        <table className="w-full text-left text-sm text-slate-600">
-          <thead className="bg-slate-50 text-slate-700 font-semibold">
-            <tr>
-              <th className="px-6 py-4">SKU</th>
-              <th className="px-6 py-4">Nama Barang</th>
-              <th className="px-6 py-4">Kategori</th>
-              <th className="px-6 py-4">Satuan Utama (Base)</th>
-              <th className="px-6 py-4">Konversi Satuan</th>
-              <th className="px-6 py-4 text-right">Aksi</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {filteredItems.map(item => (
-              <tr key={item.id} className="hover:bg-slate-50">
-                <td className="px-6 py-4 font-mono text-xs">{item.sku}</td>
-                <td className="px-6 py-4 font-medium text-slate-900">{item.name}</td>
-                <td className="px-6 py-4">{item.category}</td>
-                <td className="px-6 py-4"><span className="bg-blue-100 text-blue-800 px-2 py-1 rounded text-xs font-bold">{item.baseUnit}</span></td>
-                <td className="px-6 py-4">
-                  {item.conversions && item.conversions.length > 0 ? (
-                    <div className="flex flex-wrap gap-1">
-                      {item.conversions.map((c, i) => (
-                        <span key={i} className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded text-xs border border-slate-200">
-                          1 {c.name} = {c.factor} {item.baseUnit}
-                        </span>
-                      ))}
-                    </div>
-                  ) : <span className="text-slate-400 italic">-</span>}
-                </td>
-                <td className="px-6 py-4 text-right">
-                  <button onClick={() => onDeleteItem(item.id)} className="text-red-500 hover:bg-red-50 p-2 rounded">
-                    <Trash2 size={16} />
-                  </button>
-                </td>
+        
+        {/* SCROLLABLE TABLE CONTAINER */}
+        <div className="overflow-auto max-h-[65vh]">
+          <table className="w-full text-left text-sm text-slate-600 relative">
+            <thead className="bg-slate-50 text-slate-700 font-semibold sticky top-0 z-10 shadow-sm">
+              <tr>
+                <th className="px-6 py-4 bg-slate-50">SKU</th>
+                <th className="px-6 py-4 bg-slate-50">Nama Barang</th>
+                <th className="px-6 py-4 bg-slate-50">Kategori</th>
+                <th className="px-6 py-4 bg-slate-50">Satuan Utama (Base)</th>
+                <th className="px-6 py-4 bg-slate-50">Konversi Satuan</th>
+                <th className="px-6 py-4 text-right bg-slate-50">Aksi</th>
               </tr>
-            ))}
-            {filteredItems.length === 0 && (
-              <tr><td colSpan={6} className="text-center py-8 text-slate-400">Data tidak ditemukan</td></tr>
-            )}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {filteredItems.map(item => (
+                <tr key={item.id} className="hover:bg-slate-50">
+                  <td className="px-6 py-4 font-mono text-xs">{item.sku}</td>
+                  <td className="px-6 py-4 font-medium text-slate-900">{item.name}</td>
+                  <td className="px-6 py-4">{item.category}</td>
+                  <td className="px-6 py-4"><span className="bg-blue-100 text-blue-800 px-2 py-1 rounded text-xs font-bold">{item.baseUnit}</span></td>
+                  <td className="px-6 py-4">
+                    {item.conversions && item.conversions.length > 0 ? (
+                      <div className="flex flex-wrap gap-1">
+                        {item.conversions.map((c, i) => (
+                          <span key={i} className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded text-xs border border-slate-200">
+                            1 {c.name} = {c.factor} {item.baseUnit}
+                          </span>
+                        ))}
+                      </div>
+                    ) : <span className="text-slate-400 italic">-</span>}
+                  </td>
+                  <td className="px-6 py-4 text-right">
+                    <button onClick={() => onDeleteItem(item.id)} className="text-red-500 hover:bg-red-50 p-2 rounded">
+                      <Trash2 size={16} />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+              {filteredItems.length === 0 && (
+                <tr><td colSpan={6} className="text-center py-8 text-slate-400">Data tidak ditemukan</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {/* MODAL ADD */}

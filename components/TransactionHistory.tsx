@@ -57,19 +57,20 @@ export const TransactionHistory: React.FC<TransactionHistoryProps> = ({ transact
         </div>
       </div>
 
-      <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm text-slate-600">
-            <thead className="bg-slate-50 text-slate-700 uppercase text-xs font-semibold">
+      <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden flex flex-col">
+        {/* SCROLLABLE TABLE CONTAINER */}
+        <div className="overflow-auto max-h-[65vh]">
+          <table className="w-full text-left text-sm text-slate-600 relative">
+            <thead className="bg-slate-50 text-slate-700 uppercase text-xs font-semibold sticky top-0 z-10 shadow-sm">
               <tr>
-                <th className="px-6 py-4">ID Transaksi</th>
-                <th className="px-6 py-4">Tipe</th>
-                <th className="px-6 py-4">Tanggal</th>
-                <th className="px-6 py-4">Ref No</th>
-                <th className="px-6 py-4">Supplier</th>
-                <th className="px-6 py-4">Items</th>
-                <th className="px-6 py-4">Notes</th>
-                <th className="px-6 py-4 text-right">Actions</th>
+                <th className="px-6 py-4 bg-slate-50">ID Transaksi</th>
+                <th className="px-6 py-4 bg-slate-50">Tipe</th>
+                <th className="px-6 py-4 bg-slate-50">Tanggal</th>
+                <th className="px-6 py-4 bg-slate-50">Ref No</th>
+                <th className="px-6 py-4 bg-slate-50">Supplier</th>
+                <th className="px-6 py-4 bg-slate-50">Items</th>
+                <th className="px-6 py-4 bg-slate-50">Notes</th>
+                <th className="px-6 py-4 text-right bg-slate-50">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">

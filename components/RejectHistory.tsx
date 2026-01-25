@@ -96,7 +96,7 @@ export const RejectHistory: React.FC<RejectHistoryProps> = ({ transactions, mast
             </div>
         </div>
 
-        <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-4">
+        <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-4 flex flex-col">
              <div className="relative mb-4">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18}/>
                 <input 
@@ -108,16 +108,17 @@ export const RejectHistory: React.FC<RejectHistoryProps> = ({ transactions, mast
                 />
              </div>
 
-             <div className="overflow-x-auto">
-                 <table className="w-full text-left text-sm text-slate-600">
-                     <thead className="bg-slate-50 text-slate-700 uppercase text-xs">
+             {/* SCROLLABLE TABLE CONTAINER */}
+             <div className="overflow-auto max-h-[65vh]">
+                 <table className="w-full text-left text-sm text-slate-600 relative">
+                     <thead className="bg-slate-50 text-slate-700 uppercase text-xs sticky top-0 z-10 shadow-sm">
                          <tr>
-                             <th className="px-4 py-3">Tanggal</th>
-                             <th className="px-4 py-3">ID Transaksi</th>
-                             <th className="px-4 py-3">Barang</th>
-                             <th className="px-4 py-3">Input User</th>
-                             <th className="px-4 py-3">Tersimpan (Base)</th>
-                             <th className="px-4 py-3">Alasan</th>
+                             <th className="px-4 py-3 bg-slate-50">Tanggal</th>
+                             <th className="px-4 py-3 bg-slate-50">ID Transaksi</th>
+                             <th className="px-4 py-3 bg-slate-50">Barang</th>
+                             <th className="px-4 py-3 bg-slate-50">Input User</th>
+                             <th className="px-4 py-3 bg-slate-50">Tersimpan (Base)</th>
+                             <th className="px-4 py-3 bg-slate-50">Alasan</th>
                          </tr>
                      </thead>
                      <tbody className="divide-y divide-slate-100">
