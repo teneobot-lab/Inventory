@@ -1,22 +1,19 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { LayoutDashboard, Package, ArrowDownLeft, ArrowUpRight, FileBarChart, Settings, Menu, X, LogOut, History as HistoryIcon, Search, Bell, AlertTriangle, ChevronRight, CheckCircle, Ban, Database, ClipboardList, ListPlus, Wifi, Clock, Sun, Moon } from 'lucide-react';
 import { InventoryItem, Transaction, User, RejectItem, RejectTransaction } from './types';
-import { INITIAL_ITEMS, INITIAL_TRANSACTIONS, CURRENT_USER } from './constants';
+import { api } from './services/api';
 import { Dashboard } from './components/Dashboard';
 import { InventoryModule } from './components/InventoryModule';
 import { TransactionModule } from './components/TransactionModule';
 import { TransactionHistory } from './components/TransactionHistory';
 import { AdminView } from './components/AdminView';
 import { StockCardModal } from './components/StockCardModal';
-// Import New Reject Components
 import { RejectMasterData } from './components/RejectMasterData';
 import { RejectTransactionModule } from './components/RejectTransactionModule';
 import { RejectHistory } from './components/RejectHistory';
-// Import Media Player
 import { MediaPlayer } from './components/MediaPlayer';
-// Import Report Module
 import { ReportModule } from './components/ReportModule';
-// Import Login Module
 import { Login } from './components/Login';
 
 // Router enum
@@ -28,7 +25,6 @@ enum View {
   HISTORY = 'HISTORY',
   REPORTS = 'REPORTS',
   ADMIN = 'ADMIN',
-  // New Reject Routes
   REJECT_MASTER = 'REJECT_MASTER',
   REJECT_TRANSACTION = 'REJECT_TRANSACTION',
   REJECT_HISTORY = 'REJECT_HISTORY'
@@ -37,16 +33,16 @@ enum View {
 const App: React.FC = () => {
   // --- AUTH STATE ---
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
   
   const [currentView, setCurrentView] = useState<View>(View.DASHBOARD);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [expandedRejectMenu, setExpandedRejectMenu] = useState(true);
   
-  // App State
-  const [items, setItems] = useState<InventoryItem[]>(INITIAL_ITEMS);
-  const [transactions, setTransactions] = useState<Transaction[]>(INITIAL_TRANSACTIONS);
-  const [user] = useState<User>(CURRENT_USER);
-
+  // App State - Initialized empty, populated via API
+  const [items, setItems] = useState<InventoryItem[]>([]);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  
   // --- REJECT MODULE STATE ---
   const [rejectItems, setRejectItems] = useState<RejectItem[]>([]);
   const [rejectTransactions, setRejectTransactions] = useState<RejectTransaction[]>([]);
@@ -67,12 +63,10 @@ const App: React.FC = () => {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [latency, setLatency] = useState<number>(24);
   
-  // Initialize Theme from localStorage or default to light
   const [isDarkMode, setIsDarkMode] = useState(() => {
     return localStorage.getItem('theme') === 'dark';
   });
 
-  // Derived State
   const filteredGlobalItems = items.filter(i => 
     i.name.toLowerCase().includes(globalSearchQuery.toLowerCase()) || 
     i.sku.toLowerCase().includes(globalSearchQuery.toLowerCase())
@@ -80,8 +74,30 @@ const App: React.FC = () => {
 
   const lowStockItems = items.filter(i => i.stock <= i.minStock);
 
-  // --- Effects ---
-  
+  // --- API DATA LOADING ---
+  const refreshData = async () => {
+    try {
+        const [invData, txData, rejMaster, rejTx] = await Promise.all([
+            api.getInventory(),
+            api.getTransactions(),
+            api.getRejectMaster(),
+            api.getRejectTransactions()
+        ]);
+        setItems(invData);
+        setTransactions(txData);
+        setRejectItems(rejMaster);
+        setRejectTransactions(rejTx);
+    } catch (error) {
+        console.error("Failed to load data", error);
+    }
+  };
+
+  useEffect(() => {
+    if (isAuthenticated) {
+        refreshData();
+    }
+  }, [isAuthenticated]);
+
   // Theme Effect
   useEffect(() => {
     const root = window.document.documentElement;
@@ -100,10 +116,9 @@ const App: React.FC = () => {
     return () => clearInterval(timer);
   }, []);
 
-  // Latency Simulation Interval
+  // Latency Simulation
   useEffect(() => {
     const pingInterval = setInterval(() => {
-       // Simulate latency fluctuation between 15ms and 65ms
        setLatency(Math.floor(Math.random() * 50) + 15);
     }, 3000);
     return () => clearInterval(pingInterval);
@@ -111,11 +126,12 @@ const App: React.FC = () => {
 
   // --- Handlers ---
 
-  const handleLogin = (u: string, p: string): boolean => {
-    // Hardcoded credentials as requested
-    if (u === 'admin' && p === '22') {
-      setIsAuthenticated(true);
-      return true;
+  const handleLogin = async (u: string, p: string): Promise<boolean> => {
+    const user = await api.login(u, p);
+    if (user) {
+        setCurrentUser(user);
+        setIsAuthenticated(true);
+        return true;
     }
     return false;
   };
@@ -123,79 +139,55 @@ const App: React.FC = () => {
   const handleLogout = () => {
     setIsAuthenticated(false);
     setCurrentView(View.DASHBOARD);
+    setCurrentUser(null);
   };
 
-  const handleAddItem = (item: InventoryItem) => {
-    setItems(prev => [...prev, item]);
+  const handleAddItem = async (item: InventoryItem) => {
+    await api.addInventory(item);
+    refreshData(); // Refresh all data to ensure sync
   };
 
-  const handleUpdateItem = (updatedItem: InventoryItem) => {
-    setItems(prev => prev.map(item => item.id === updatedItem.id ? updatedItem : item));
+  const handleUpdateItem = async (updatedItem: InventoryItem) => {
+    await api.updateInventory(updatedItem);
+    refreshData();
   };
 
-  const handleDeleteItem = (id: string) => {
+  const handleDeleteItem = async (id: string) => {
     if (confirm('Are you sure you want to delete this item?')) {
-      setItems(prev => prev.filter(item => item.id !== id));
+      await api.deleteInventory(id);
+      refreshData();
     }
   };
 
   // --- Reject Handlers ---
-  const handleAddRejectItem = (item: RejectItem) => {
-    setRejectItems(prev => [...prev, item]);
+  const handleAddRejectItem = async (item: RejectItem) => {
+    await api.addRejectMaster(item);
+    refreshData();
   };
-  const handleDeleteRejectItem = (id: string) => {
+  const handleDeleteRejectItem = async (id: string) => {
       if(confirm('Hapus master barang reject ini?')) {
-        setRejectItems(prev => prev.filter(i => i.id !== id));
+        await api.deleteRejectMaster(id);
+        refreshData();
       }
   };
-  const handleSaveRejectTransaction = (tx: RejectTransaction) => {
-      setRejectTransactions(prev => [...prev, tx]);
+  const handleSaveRejectTransaction = async (tx: RejectTransaction) => {
+      await api.addRejectTransaction(tx);
+      refreshData();
   };
 
-
-  // Helper to adjust stock for a list of transaction items
-  const adjustStock = (transactionItems: any[], type: 'IN' | 'OUT', multiplier: 1 | -1) => {
-    const stockMap = new Map<string, number>();
-    
-    // Group by ID first
-    transactionItems.forEach(tItem => {
-       const currentVal = stockMap.get(tItem.itemId) || 0;
-       stockMap.set(tItem.itemId, currentVal + tItem.quantity);
-    });
-
-    setItems(prevItems => prevItems.map(item => {
-       const qtyChange = stockMap.get(item.id);
-       if (qtyChange) {
-         const factor = type === 'IN' ? 1 : -1;
-         return { ...item, stock: item.stock + (qtyChange * factor * multiplier) };
-       }
-       return item;
-    }));
+  // Transaction Handlers
+  // Note: Backend handles stock adjustment, we just send transaction data
+  const handleSaveTransaction = async (newTransaction: Transaction) => {
+    await api.addTransaction(newTransaction);
+    refreshData();
   };
 
-  const handleSaveTransaction = (newTransaction: Transaction) => {
-    setTransactions(prev => [...prev, newTransaction]);
-    adjustStock(newTransaction.items, newTransaction.type, 1);
-  };
-
-  const handleUpdateTransaction = (updatedTransaction: Transaction) => {
-    setTransactions(prevTransactions => {
-      const oldTransaction = prevTransactions.find(t => t.id === updatedTransaction.id);
-      if (oldTransaction) {
-        // 1. Revert stock from old transaction (multiplier -1)
-        adjustStock(oldTransaction.items, oldTransaction.type, -1);
-      }
-      return prevTransactions.map(t => t.id === updatedTransaction.id ? updatedTransaction : t);
-    });
-
-    // 2. Apply stock for new transaction (multiplier 1)
-    adjustStock(updatedTransaction.items, updatedTransaction.type, 1);
-    
-    // Clear editing state if applicable
+  const handleUpdateTransaction = async (updatedTransaction: Transaction) => {
+    await api.updateTransaction(updatedTransaction);
     setEditingTransaction(null);
+    refreshData();
   };
 
-  // Handler to switch from History to Form
   const handleEditFromHistory = (t: Transaction) => {
     setEditingTransaction(t);
     if (t.type === 'IN') {
@@ -205,17 +197,14 @@ const App: React.FC = () => {
     }
   };
 
-  // Helper to change view and reset edit state if navigating manually
   const changeView = (view: View) => {
     setCurrentView(view);
     setEditingTransaction(null);
     setIsMobileMenuOpen(false);
   };
 
-  // Mobile menu toggle
   const toggleMobileMenu = () => setIsMobileMenuOpen(!isMobileMenuOpen);
 
-  // Click outside listener for notifications
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (notificationRef.current && !notificationRef.current.contains(event.target as Node)) {
@@ -228,7 +217,6 @@ const App: React.FC = () => {
     };
   }, []);
 
-  // Navigation Item Component
   const NavItem = ({ view, icon: Icon, label, isActive = false }: { view: View; icon: any; label: string; isActive?: boolean }) => (
     <button
       onClick={() => changeView(view)}
@@ -243,18 +231,14 @@ const App: React.FC = () => {
     </button>
   );
 
-  // --- RENDER LOGIN IF NOT AUTHENTICATED ---
   if (!isAuthenticated) {
     return <Login onLogin={handleLogin} />;
   }
 
   return (
     <div className={`flex h-screen bg-slate-50 dark:bg-slate-950 overflow-hidden relative transition-colors duration-300 ${isDarkMode ? 'dark' : ''}`}>
-      
-      {/* GLOBAL MEDIA PLAYER */}
       <MediaPlayer />
 
-      {/* Sidebar - Desktop */}
       <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-slate-900 text-white transform transition-transform duration-300 ease-in-out lg:translate-x-0 lg:static lg:inset-0 ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="h-full flex flex-col">
           <div className="p-6 border-b border-slate-800 flex items-center justify-between">
@@ -275,7 +259,6 @@ const App: React.FC = () => {
             <NavItem view={View.OUT_TRANSACTION} icon={ArrowUpRight} label="Transaksi Keluar" />
             <NavItem view={View.HISTORY} icon={HistoryIcon} label="History" />
 
-            {/* REJECT MODULE SIDEBAR */}
             <div className="pt-4 pb-2 px-4 text-xs font-semibold text-slate-500 uppercase tracking-wider flex justify-between cursor-pointer" onClick={() => setExpandedRejectMenu(!expandedRejectMenu)}>
               <span>Reject Module</span>
               <span className="text-[10px] bg-red-900 text-red-100 px-1 rounded">Standalone</span>
@@ -322,15 +305,12 @@ const App: React.FC = () => {
         </div>
       </aside>
 
-      {/* Main Content */}
       <main className="flex-1 flex flex-col h-screen overflow-hidden">
-        {/* Header - MODIFIED FOR DARK THEME CONSISTENCY */}
         <header className="bg-slate-900 border-b border-slate-800 h-16 flex items-center justify-between px-6 z-20 relative shadow-md">
           <button onClick={toggleMobileMenu} className="lg:hidden text-slate-400 hover:text-white">
             <Menu size={24} />
           </button>
           
-          {/* Top Bar Search with Autocomplete */}
           <div className="flex-1 px-4 lg:px-8 max-w-2xl relative">
              <div className="relative group">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-500 group-focus-within:text-blue-400 transition-colors" size={18} />
@@ -347,7 +327,6 @@ const App: React.FC = () => {
                   onBlur={() => setTimeout(() => setShowGlobalSearch(false), 200)}
                 />
                 
-                {/* Autocomplete Dropdown (Keeps white background for readability) */}
                 {showGlobalSearch && globalSearchQuery && (
                   <div className="absolute top-full left-0 right-0 mt-2 bg-white dark:bg-slate-800 rounded-xl shadow-xl border border-slate-100 dark:border-slate-700 max-h-96 overflow-y-auto animate-fade-in z-50">
                       {filteredGlobalItems.length > 0 ? (
@@ -391,7 +370,6 @@ const App: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-3 md:gap-6">
-             {/* Connectivity Status */}
              <div className="hidden xl:flex items-center gap-3 px-3 py-1.5 rounded-full bg-slate-800 border border-slate-700">
                 <div className="relative flex h-3 w-3">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
@@ -403,7 +381,6 @@ const App: React.FC = () => {
                 </div>
              </div>
 
-             {/* Theme Toggle Button */}
              <button
                onClick={() => setIsDarkMode(!isDarkMode)}
                className="p-2 rounded-full bg-slate-800 hover:bg-slate-700 text-yellow-400 transition-all border border-slate-700 hover:border-slate-600"
@@ -412,7 +389,6 @@ const App: React.FC = () => {
                {isDarkMode ? <Moon size={18} className="text-blue-300" /> : <Sun size={18} />}
              </button>
 
-             {/* Time Widget */}
              <div className="hidden lg:flex flex-col items-end text-right border-r border-slate-700 pr-6 border-l pl-6">
                 <span className="text-sm font-medium text-white flex items-center gap-2">
                    {currentTime.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
@@ -423,7 +399,6 @@ const App: React.FC = () => {
                 </span>
              </div>
 
-             {/* Notification Bell */}
              <div className="relative" ref={notificationRef}>
                 <button 
                   onClick={() => setIsNotificationsOpen(!isNotificationsOpen)}
@@ -437,7 +412,6 @@ const App: React.FC = () => {
                   )}
                 </button>
 
-                {/* Notification Dropdown */}
                 {isNotificationsOpen && (
                   <div className="absolute right-0 mt-3 w-80 md:w-96 bg-white dark:bg-slate-800 rounded-xl shadow-xl border border-slate-100 dark:border-slate-700 z-50 overflow-hidden animate-fade-in origin-top-right">
                      <div className="p-4 border-b border-slate-50 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800 flex justify-between items-center">
@@ -485,41 +459,25 @@ const App: React.FC = () => {
                          <div className="p-8 text-center text-slate-400">
                             <CheckCircle size={32} className="mx-auto mb-2 text-green-500 opacity-50"/>
                             <p className="text-sm">Semua stok aman!</p>
-                            <p className="text-xs mt-1">Tidak ada item dibawah batas minimum.</p>
                          </div>
                        )}
                      </div>
-                     {lowStockItems.length > 0 && (
-                       <div className="p-3 bg-slate-50 dark:bg-slate-800 border-t border-slate-100 dark:border-slate-700 text-center">
-                          <button 
-                            onClick={() => {
-                              setCurrentView(View.INVENTORY);
-                              setIsNotificationsOpen(false);
-                            }}
-                            className="text-xs font-medium text-blue-600 hover:text-blue-800"
-                          >
-                            Lihat Inventory Manager
-                          </button>
-                       </div>
-                     )}
                   </div>
                 )}
              </div>
 
-             {/* User Profile */}
              <div className="flex items-center gap-3 border-l border-slate-700 pl-4 md:pl-6">
                  <div className="text-right hidden sm:block">
-                   <p className="text-sm font-medium text-white">{user.name}</p>
-                   <p className="text-xs text-slate-400 capitalize">{user.role}</p>
+                   <p className="text-sm font-medium text-white">{currentUser?.name || 'User'}</p>
+                   <p className="text-xs text-slate-400 capitalize">{currentUser?.role || 'Guest'}</p>
                  </div>
                  <div className="h-9 w-9 bg-blue-600 text-white rounded-full flex items-center justify-center font-bold shadow-md ring-2 ring-slate-700">
-                   {user.name.charAt(0)}
+                   {currentUser?.name.charAt(0) || 'U'}
                  </div>
              </div>
           </div>
         </header>
 
-        {/* Content Area */}
         <div className="flex-1 overflow-auto p-4 lg:p-8">
           <div className="max-w-7xl mx-auto">
             {currentView === View.DASHBOARD && (
@@ -570,11 +528,10 @@ const App: React.FC = () => {
               <ReportModule items={items} transactions={transactions} />
             )}
 
-            {currentView === View.ADMIN && (
-              <AdminView user={user} items={items} transactions={transactions} />
+            {currentView === View.ADMIN && currentUser && (
+              <AdminView user={currentUser} items={items} transactions={transactions} />
             )}
 
-            {/* REJECT VIEWS */}
             {currentView === View.REJECT_MASTER && (
                 <RejectMasterData 
                     items={rejectItems} 
@@ -598,7 +555,6 @@ const App: React.FC = () => {
           </div>
         </div>
 
-        {/* Stock Card Modal */}
         {stockCardItem && (
           <StockCardModal 
             item={stockCardItem} 

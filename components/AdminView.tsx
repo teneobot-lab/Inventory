@@ -1,9 +1,9 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { InventoryItem, Transaction, User } from '../types';
 import { generateInventoryInsights } from '../services/geminiService';
-import { Bot, Settings, Shield, User as UserIcon, Loader2, Database, Link, Check, RefreshCw, Plus, Edit, Trash2, X, Save, Eye, EyeOff } from 'lucide-react';
-import { INITIAL_USERS } from '../constants';
+import { api } from '../services/api';
+import { Bot, Settings, Shield, User as UserIcon, Loader2, Database, Link, RefreshCw, Plus, Edit, Trash2, X, Save, Eye, EyeOff } from 'lucide-react';
 
 interface AdminViewProps {
   user: User;
@@ -25,13 +25,23 @@ export const AdminView: React.FC<AdminViewProps> = ({ user, items, transactions 
   const [lastSyncTime, setLastSyncTime] = useState<string>(localStorage.getItem('gs_last_sync') || '-');
 
   // --- User Management State ---
-  const [users, setUsers] = useState<User[]>(INITIAL_USERS);
+  const [users, setUsers] = useState<User[]>([]);
   const [isUserModalOpen, setIsUserModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [userFormData, setUserFormData] = useState<Partial<User>>({
     name: '', username: '', password: '', email: '', role: 'staff'
   });
   const [showPassword, setShowPassword] = useState(false);
+
+  // Load Users on Mount
+  useEffect(() => {
+    loadUsers();
+  }, []);
+
+  const loadUsers = async () => {
+    const data = await api.getUsers();
+    setUsers(data);
+  };
 
   // --- AI Logic ---
   const handleRunAnalysis = async () => {
@@ -76,7 +86,7 @@ export const AdminView: React.FC<AdminViewProps> = ({ user, items, transactions 
     setIsUserModalOpen(true);
   };
 
-  const handleSaveUser = (e: React.FormEvent) => {
+  const handleSaveUser = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!userFormData.username || !userFormData.password || !userFormData.name) {
        alert("Username, Password, dan Nama wajib diisi.");
@@ -84,20 +94,22 @@ export const AdminView: React.FC<AdminViewProps> = ({ user, items, transactions 
     }
 
     if (editingUser) {
-      setUsers(prev => prev.map(u => u.id === editingUser.id ? { ...u, ...userFormData } as User : u));
+      await api.updateUser({ ...editingUser, ...userFormData } as User);
     } else {
       const newUser: User = {
         ...userFormData as User,
         id: `user-${Date.now()}`
       };
-      setUsers(prev => [...prev, newUser]);
+      await api.addUser(newUser);
     }
+    await loadUsers();
     setIsUserModalOpen(false);
   };
 
-  const handleDeleteUser = (id: string) => {
+  const handleDeleteUser = async (id: string) => {
     if (confirm("Apakah anda yakin ingin menghapus user ini?")) {
-      setUsers(prev => prev.filter(u => u.id !== id));
+      await api.deleteUser(id);
+      await loadUsers();
     }
   };
 

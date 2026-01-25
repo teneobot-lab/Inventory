@@ -2,9 +2,10 @@
 import React, { useState, useEffect } from 'react';
 import { User, Lock, Loader2, CheckCircle2 } from 'lucide-react';
 import { Toast } from './Toast';
+import { api } from '../services/api';
 
 interface LoginProps {
-  onLogin: (u: string, p: string) => boolean;
+  onLogin: (u: string, p: string) => boolean | Promise<boolean>;
 }
 
 export const Login: React.FC<LoginProps> = ({ onLogin }) => {
@@ -49,11 +50,19 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
     }, intervalTime);
   };
 
-  const finalizeLogin = () => {
-    // Check credentials locally to decide UX flow (Success vs Error path)
-    // Note: We replicate the check here purely for the visual sequence (Toast -> Redirect)
-    // The actual state change still happens via onLogin prop
-    if (username === 'admin' && password === '22') {
+  const finalizeLogin = async () => {
+    // Check credentials via API to decide UX flow (Success vs Error path)
+    // We check explicitly here to show the success animation before calling onLogin (which triggers global state change)
+    let isValid = false;
+    try {
+      const user = await api.login(username, password);
+      if (user) isValid = true;
+    } catch (error) {
+      console.error("Login check failed", error);
+      isValid = false;
+    }
+
+    if (isValid) {
        // SUCCESS FLOW
        setProgress(100);
        setToast({ show: true, message: 'Login Berhasil! Mengalihkan ke Dashboard...', type: 'success' });
