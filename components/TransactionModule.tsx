@@ -6,15 +6,17 @@ import * as XLSX from 'xlsx';
 interface TransactionModuleProps {
   type: TransactionType;
   items: InventoryItem[];
+  onAddItem: (item: InventoryItem) => void; // New prop for Auto-Create
   onSaveTransaction: (t: Transaction) => void;
   onUpdateTransaction: (t: Transaction) => void;
-  initialData?: Transaction | null; // Added prop to handle editing from History
+  initialData?: Transaction | null;
   onCancelEdit?: () => void;
 }
 
 export const TransactionModule: React.FC<TransactionModuleProps> = ({ 
   type, 
   items, 
+  onAddItem,
   onSaveTransaction, 
   onUpdateTransaction,
   initialData,
@@ -49,6 +51,8 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
 
   const cartFileInputRef = useRef<HTMLInputElement>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const qtyInputRef = useRef<HTMLInputElement>(null);
 
   // -- Effects --
   
@@ -106,6 +110,9 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
     setInputQty('');
     setInputUnit('');
     setShowAutocomplete(false);
+    
+    // Return Focus to Search
+    setTimeout(() => searchInputRef.current?.focus(), 50);
   };
 
   const handleDeleteCartItem = (index: number) => {
@@ -115,7 +122,7 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
   };
 
   // -- Autocomplete Logic --
-  const handleKeyDown = (e: React.KeyboardEvent) => {
+  const handleKeyDownSearch = (e: React.KeyboardEvent) => {
     if (e.key === 'ArrowDown') {
       e.preventDefault();
       setHighlightedIndex(prev => (prev < filteredItems.length - 1 ? prev + 1 : prev));
@@ -126,10 +133,15 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
       e.preventDefault();
       if (showAutocomplete && filteredItems[highlightedIndex]) {
         selectItem(filteredItems[highlightedIndex]);
-      } else {
-        handleAddItem();
       }
     }
+  };
+
+  const handleKeyDownQty = (e: React.KeyboardEvent) => {
+      if (e.key === 'Enter') {
+          e.preventDefault();
+          handleAddItem();
+      }
   };
 
   const selectItem = (item: InventoryItem) => {
@@ -137,10 +149,20 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
     setSearchQuery(item.name);
     setInputUnit(item.unit);
     setShowAutocomplete(false);
-    setTimeout(() => document.getElementById('qty-input')?.focus(), 50);
+    setTimeout(() => qtyInputRef.current?.focus(), 50);
   };
 
-  // -- XLSX Import for Cart --
+  // -- XLSX Template Download --
+  const handleDownloadTemplate = () => {
+    const headers = ["SKU", "Nama Barang", "Qty", "Satuan"];
+    const sample = ["NEW-001", "Contoh Barang Baru", 10, "pcs"];
+    const ws = XLSX.utils.aoa_to_sheet([headers, sample]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Template Transaksi");
+    XLSX.writeFile(wb, "template_transaksi.xlsx");
+  };
+
+  // -- XLSX Import for Cart (with Auto Create) --
   const handleCartImport = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -154,34 +176,57 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
       const sheet = workbook.Sheets[workbook.SheetNames[0]];
       const jsonData: any[][] = XLSX.utils.sheet_to_json(sheet, { header: 1 });
 
-      const newItems: TransactionItem[] = [];
+      const newCartItems: TransactionItem[] = [];
+      let autoCreatedCount = 0;
       
+      // Skip header
       for (let i = 1; i < jsonData.length; i++) {
         const row = jsonData[i];
         if (!row || row.length < 2) continue;
         
         const sku = String(row[0]).trim();
+        const name = String(row[1]).trim();
         const qty = parseFloat(String(row[2]));
-        const unit = row[3] ? String(row[3]).trim() : '';
+        const unit = row[3] ? String(row[3]).trim() : 'pcs';
 
-        const matchedItem = items.find(it => it.sku.toLowerCase() === sku.toLowerCase());
-        
-        if (matchedItem && !isNaN(qty) && qty > 0) {
-          newItems.push({
-            itemId: matchedItem.id,
-            itemName: matchedItem.name,
-            sku: matchedItem.sku,
-            quantity: qty,
-            unit: unit || matchedItem.unit
-          });
+        if (!sku || isNaN(qty) || qty <= 0) continue;
+
+        let matchedItem = items.find(it => it.sku.toLowerCase() === sku.toLowerCase());
+
+        // AUTO CREATE LOGIC
+        if (!matchedItem) {
+            const newItem: InventoryItem = {
+                id: `AUTO-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+                name: name || `New Item (${sku})`,
+                sku: sku,
+                category: 'Uncategorized',
+                stock: 0,
+                minStock: 0,
+                unit: unit,
+                price: 0,
+                lastUpdated: new Date().toISOString()
+            };
+            onAddItem(newItem);
+            matchedItem = newItem; // Use this new item
+            autoCreatedCount++;
         }
+        
+        newCartItems.push({
+          itemId: matchedItem.id,
+          itemName: matchedItem.name,
+          sku: matchedItem.sku,
+          quantity: qty,
+          unit: unit
+        });
       }
       
-      if (newItems.length > 0) {
-        setCart([...cart, ...newItems]);
-        alert(`Added ${newItems.length} items to cart.`);
+      if (newCartItems.length > 0) {
+        setCart([...cart, ...newCartItems]);
+        let msg = `Berhasil menambahkan ${newCartItems.length} item ke keranjang.`;
+        if (autoCreatedCount > 0) msg += `\n(${autoCreatedCount} item baru dibuat otomatis)`;
+        alert(msg);
       } else {
-        alert("No valid items found matching existing SKU.");
+        alert("Tidak ada data valid ditemukan.");
       }
       if (cartFileInputRef.current) cartFileInputRef.current.value = '';
     };
@@ -209,8 +254,31 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
   // -- Save Transaction --
   const handleSave = () => {
     if (cart.length === 0) {
-      alert("Cart is empty!");
+      alert("Keranjang kosong!");
       return;
+    }
+
+    // SOFT VALIDATION (Stock < 0) for OUT Transactions
+    if (type === 'OUT') {
+        const warningItems: string[] = [];
+        cart.forEach(cItem => {
+            const currentItem = items.find(i => i.id === cItem.itemId);
+            if (currentItem) {
+                const predictedStock = currentItem.stock - cItem.quantity;
+                if (predictedStock < 0) {
+                    warningItems.push(`${cItem.itemName} (Sisa: ${currentItem.stock}, Keluar: ${cItem.quantity} => ${predictedStock})`);
+                }
+            }
+        });
+
+        if (warningItems.length > 0) {
+            const confirmed = confirm(
+                `PERINGATAN: Stok akan menjadi negatif untuk item berikut:\n\n` +
+                warningItems.join('\n') +
+                `\n\nLanjutkan transaksi?`
+            );
+            if (!confirmed) return;
+        }
     }
 
     const transactionData: Transaction = {
@@ -231,7 +299,7 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
     }
     
     resetForm();
-    alert("Transaction Saved!");
+    alert("Transaksi Berhasil Disimpan!");
   };
 
   return (
@@ -331,6 +399,9 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
                     <Search size={18} /> Keranjang Barang
                  </h3>
                  <div className="flex gap-2">
+                   <button onClick={handleDownloadTemplate} className="text-xs flex items-center gap-1 bg-white text-slate-600 border border-slate-300 px-3 py-1.5 rounded-lg hover:bg-slate-50">
+                     <Download size={14}/> Template
+                   </button>
                    <button onClick={() => cartFileInputRef.current?.click()} className="text-xs flex items-center gap-1 bg-green-50 text-green-700 px-3 py-1.5 rounded-lg border border-green-200 hover:bg-green-100">
                      <FileSpreadsheet size={14}/> Import Items (XLSX)
                    </button>
@@ -346,6 +417,7 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
                     <div className="md:col-span-6 relative">
                        <label className="block text-xs font-semibold text-slate-600 mb-1">Cari Barang (SKU/Nama)</label>
                        <input 
+                         ref={searchInputRef}
                          type="text" 
                          value={searchQuery}
                          onChange={e => {
@@ -353,7 +425,7 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
                            setShowAutocomplete(true);
                            setSelectedItem(null); // Clear selection if typing
                          }}
-                         onKeyDown={handleKeyDown}
+                         onKeyDown={handleKeyDownSearch}
                          onFocus={() => setShowAutocomplete(true)}
                          placeholder="Ketik untuk mencari..."
                          className={`w-full border rounded-lg p-2.5 outline-none ${selectedItem ? 'border-green-500 bg-green-50' : 'border-slate-300'}`}
@@ -378,7 +450,10 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
                                 </div>
                               ))
                             ) : (
-                              <div className="p-3 text-sm text-slate-400 text-center">Tidak ada barang ditemukan</div>
+                              <div className="p-3 text-sm text-slate-400 text-center">
+                                 <span className="block">Tidak ditemukan.</span>
+                                 <span className="text-xs italic">Akan dibuat otomatis jika diimport.</span>
+                              </div>
                             )}
                          </div>
                        )}
@@ -388,13 +463,14 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
                     <div className="md:col-span-2">
                        <label className="block text-xs font-semibold text-slate-600 mb-1">Qty</label>
                        <input 
+                         ref={qtyInputRef}
                          id="qty-input"
                          type="number"
                          min="0"
                          placeholder=""
                          value={inputQty}
                          onChange={e => setInputQty(e.target.value)}
-                         onKeyDown={handleKeyDown}
+                         onKeyDown={handleKeyDownQty}
                          className="w-full border border-slate-300 rounded-lg p-2.5 outline-none"
                          style={{ appearance: 'textfield' }} 
                        />
@@ -407,7 +483,7 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
                        <select 
                          value={inputUnit}
                          onChange={e => setInputUnit(e.target.value)}
-                         onKeyDown={handleKeyDown}
+                         onKeyDown={handleKeyDownQty}
                          className="w-full border border-slate-300 rounded-lg p-2.5 outline-none bg-white"
                        >
                          {selectedItem ? (
@@ -490,7 +566,6 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
            </div>
         </div>
       </div>
-      {/* History table removed from here as per request */}
     </div>
   );
 };

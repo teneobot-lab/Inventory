@@ -434,6 +434,7 @@ const App: React.FC = () => {
               <TransactionModule 
                 type="IN" 
                 items={items} 
+                onAddItem={handleAddItem}
                 onSaveTransaction={handleSaveTransaction}
                 onUpdateTransaction={handleUpdateTransaction}
                 initialData={editingTransaction?.type === 'IN' ? editingTransaction : null}
@@ -445,6 +446,7 @@ const App: React.FC = () => {
               <TransactionModule 
                 type="OUT" 
                 items={items} 
+                onAddItem={handleAddItem}
                 onSaveTransaction={handleSaveTransaction}
                 onUpdateTransaction={handleUpdateTransaction}
                 initialData={editingTransaction?.type === 'OUT' ? editingTransaction : null}
@@ -483,6 +485,7 @@ const App: React.FC = () => {
             {currentView === View.REJECT_TRANSACTION && (
                 <RejectTransactionModule 
                     masterItems={rejectItems} 
+                    onAddItem={handleAddRejectItem}
                     onSaveTransaction={handleSaveRejectTransaction} 
                 />
             )}
