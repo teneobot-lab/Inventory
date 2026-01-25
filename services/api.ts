@@ -1,7 +1,9 @@
-
+/// <reference types="vite/client" />
 import { InventoryItem, Transaction, User, RejectItem, RejectTransaction } from '../types';
 
-const API_URL = 'http://localhost:3010/api';
+// Use environment variable if available (Production), otherwise fallback to localhost (Development)
+// Note: In Vite, env vars are accessed via import.meta.env
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3010/api';
 
 const headers = {
   'Content-Type': 'application/json',
@@ -19,15 +21,18 @@ export const api = {
       const data = await res.json();
       return data.success ? data.user : null;
     } catch (e) {
-      console.error(e);
+      console.error("Connection Error:", e);
       return null;
     }
   },
 
   // Inventory
   getInventory: async (): Promise<InventoryItem[]> => {
-    const res = await fetch(`${API_URL}/inventory`);
-    return res.json();
+    try {
+        const res = await fetch(`${API_URL}/inventory`);
+        if(!res.ok) throw new Error("Failed to fetch");
+        return res.json();
+    } catch (e) { console.error(e); return []; }
   },
   addInventory: async (item: InventoryItem) => {
     await fetch(`${API_URL}/inventory`, { method: 'POST', headers, body: JSON.stringify(item) });
@@ -41,8 +46,11 @@ export const api = {
 
   // Transactions
   getTransactions: async (): Promise<Transaction[]> => {
-    const res = await fetch(`${API_URL}/transactions`);
-    return res.json();
+    try {
+        const res = await fetch(`${API_URL}/transactions`);
+        if(!res.ok) throw new Error("Failed to fetch");
+        return res.json();
+    } catch (e) { console.error(e); return []; }
   },
   addTransaction: async (tx: Transaction) => {
     await fetch(`${API_URL}/transactions`, { method: 'POST', headers, body: JSON.stringify(tx) });
@@ -53,8 +61,11 @@ export const api = {
 
   // Reject Module
   getRejectMaster: async (): Promise<RejectItem[]> => {
-    const res = await fetch(`${API_URL}/reject-master`);
-    return res.json();
+    try {
+        const res = await fetch(`${API_URL}/reject-master`);
+        if(!res.ok) throw new Error("Failed to fetch");
+        return res.json();
+    } catch (e) { console.error(e); return []; }
   },
   addRejectMaster: async (item: RejectItem) => {
     await fetch(`${API_URL}/reject-master`, { method: 'POST', headers, body: JSON.stringify(item) });
@@ -63,8 +74,11 @@ export const api = {
     await fetch(`${API_URL}/reject-master/${id}`, { method: 'DELETE' });
   },
   getRejectTransactions: async (): Promise<RejectTransaction[]> => {
-    const res = await fetch(`${API_URL}/reject-transactions`);
-    return res.json();
+    try {
+        const res = await fetch(`${API_URL}/reject-transactions`);
+        if(!res.ok) throw new Error("Failed to fetch");
+        return res.json();
+    } catch (e) { console.error(e); return []; }
   },
   addRejectTransaction: async (tx: RejectTransaction) => {
     await fetch(`${API_URL}/reject-transactions`, { method: 'POST', headers, body: JSON.stringify(tx) });
@@ -72,8 +86,11 @@ export const api = {
 
   // Users
   getUsers: async (): Promise<User[]> => {
-    const res = await fetch(`${API_URL}/users`);
-    return res.json();
+    try {
+        const res = await fetch(`${API_URL}/users`);
+        if(!res.ok) throw new Error("Failed to fetch");
+        return res.json();
+    } catch (e) { console.error(e); return []; }
   },
   addUser: async (user: User) => {
     await fetch(`${API_URL}/users`, { method: 'POST', headers, body: JSON.stringify(user) });

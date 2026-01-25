@@ -38,56 +38,47 @@
     <style>
       body { font-family: 'Inter', sans-serif; }
       
-      /* GLOBAL DARK MODE OVERRIDES 
-         This allows us to theme existing components without rewriting their JSX 
-      */
+      /* GLOBAL DARK MODE OVERRIDES */
       .dark body { background-color: #0f172a; color: #f1f5f9; }
-      
-      /* Force white cards to become dark slate in dark mode */
       .dark .bg-white { 
         background-color: #1e293b !important; 
         border-color: #334155 !important; 
         color: #f1f5f9 !important; 
       }
-      
-      /* Text adjustments */
       .dark .text-slate-800, .dark .text-slate-900 { color: #f1f5f9 !important; }
       .dark .text-slate-600, .dark .text-slate-500 { color: #94a3b8 !important; }
       .dark .text-slate-700 { color: #cbd5e1 !important; }
-      
-      /* Backgrounds & Borders */
       .dark .bg-slate-50 { background-color: #0f172a !important; }
       .dark .border-slate-100, .dark .border-slate-200 { border-color: #334155 !important; }
       .dark .hover\:bg-slate-50:hover { background-color: #334155 !important; }
-      
-      /* Form Elements */
       .dark input, .dark select, .dark textarea {
          background-color: #0f172a !important; 
          border-color: #334155 !important;
          color: white !important;
       }
-      
-      /* Specific override for the Header to ensure it stays dark/consistent */
       .dark header { border-bottom-color: #1e293b !important; }
     </style>
   <script type="importmap">
 {
   "imports": {
-    "@google/genai": "https://esm.sh/@google/genai@^1.38.0",
-    "lucide-react": "https://esm.sh/lucide-react@^0.563.0",
+    "jspdf-autotable": "https://esm.sh/jspdf-autotable@^5.0.7",
     "react/": "https://esm.sh/react@^19.2.3/",
     "react": "https://esm.sh/react@^19.2.3",
-    "react-markdown": "https://esm.sh/react-markdown@^10.1.0",
-    "recharts": "https://esm.sh/recharts@^3.7.0",
     "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
-    "xlsx": "https://esm.sh/xlsx@0.18.5",
-    "jspdf": "https://esm.sh/jspdf@2.5.1",
-    "jspdf-autotable": "https://esm.sh/jspdf-autotable@3.5.29"
+    "@google/genai": "https://esm.sh/@google/genai@^1.38.0",
+    "lucide-react": "https://esm.sh/lucide-react@^0.563.0",
+    "recharts": "https://esm.sh/recharts@^3.7.0",
+    "@vitejs/plugin-react": "https://esm.sh/@vitejs/plugin-react@^5.1.2",
+    "vite": "https://esm.sh/vite@^7.3.1",
+    "jspdf": "https://esm.sh/jspdf@^4.0.0",
+    "xlsx": "https://esm.sh/xlsx@^0.18.5"
   }
 }
 </script>
 </head>
   <body class="bg-slate-50 text-slate-900 antialiased transition-colors duration-300">
     <div id="root"></div>
+    <!-- Entry Point for Vite App -->
+    <script type="module" src="/index.tsx"></script>
   </body>
 </html>
