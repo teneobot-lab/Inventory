@@ -1,0 +1,5 @@
+{
+  "name": "SmartInventory Pro",
+  "description": "A comprehensive inventory management system featuring stock tracking, incoming/outgoing transactions, analytics, and AI-powered insights using Gemini.",
+  "requestFramePermissions": []
+}
