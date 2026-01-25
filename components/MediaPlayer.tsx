@@ -142,8 +142,15 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({ isOpen, onClose, onPla
     onPlayingChange(isPlaying);
   }, [isPlaying, onPlayingChange]);
 
-  // Widget Classes: Use opacity/pointer-events to hide but keep audio playing
-  const widgetClasses = `fixed bottom-20 right-4 md:bottom-24 md:right-8 bg-slate-900 text-white rounded-xl shadow-2xl z-[100] transition-all duration-300 border border-slate-700 overflow-hidden flex flex-col w-80 md:w-96 h-[500px] ${isOpen ? 'opacity-100 translate-y-0 pointer-events-auto' : 'opacity-0 translate-y-10 pointer-events-none'}`;
+  // Widget Classes: Responsive Design
+  // Mobile: Stretched width (left-4 right-4), height 60vh.
+  // Desktop (md): Fixed width (w-96), height 500px, positioned right.
+  const widgetClasses = `fixed 
+    bottom-20 left-4 right-4 h-[60vh] max-h-[550px]
+    md:left-auto md:right-8 md:bottom-24 md:w-96 md:h-[500px] 
+    bg-slate-900 text-white rounded-xl shadow-2xl z-[100] 
+    transition-all duration-300 border border-slate-700 overflow-hidden flex flex-col 
+    ${isOpen ? 'opacity-100 translate-y-0 pointer-events-auto' : 'opacity-0 translate-y-10 pointer-events-none'}`;
 
   const currentVideo = playlist[currentIndex];
   
@@ -166,7 +173,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({ isOpen, onClose, onPla
       </div>
 
       {/* Video Area */}
-      <div className="relative w-full pt-[56.25%] bg-black group">
+      <div className="relative w-full pt-[56.25%] bg-black group shrink-0">
         {currentVideo ? (
           <iframe
             ref={iframeRef}
@@ -200,7 +207,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({ isOpen, onClose, onPla
       </div>
 
       {/* Controls & Info */}
-      <div className="p-4 bg-slate-900 flex flex-col gap-2 relative z-10">
+      <div className="p-4 bg-slate-900 flex flex-col gap-2 relative z-10 shrink-0">
          {currentVideo ? (
              <div className="mb-2">
                <h4 className="font-semibold text-sm truncate pr-4" title={currentVideo.title}>{currentVideo.title}</h4>
@@ -284,7 +291,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({ isOpen, onClose, onPla
                 </div>
             </div>
          ) : (
-            <div className="flex-1 p-4 flex flex-col gap-3">
+            <div className="flex-1 p-4 flex flex-col gap-3 overflow-y-auto">
                <div className="flex justify-between items-center">
                    <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Tambah Media</div>
                    {playlist.length > 0 && (
@@ -319,7 +326,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({ isOpen, onClose, onPla
                  <Plus size={14} /> Tambah ke Playlist
                </button>
                
-               <div className="mt-auto text-[10px] text-slate-600 text-center px-4 leading-relaxed">
+               <div className="mt-auto text-[10px] text-slate-600 text-center px-4 leading-relaxed pb-2">
                   Tips: Pastikan link YouTube bersifat publik atau tidak terdaftar (unlisted). Video privat tidak dapat diputar.
                </div>
             </div>
