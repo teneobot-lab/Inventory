@@ -1,15 +1,9 @@
 import { InventoryItem, Transaction, User, RejectItem, RejectTransaction } from '../types';
 
-// Safely access env vars
-const getApiUrl = () => {
-  // Use process.env which is replaced by Vite during build via define config
-  if (process.env.VITE_API_URL) {
-    return process.env.VITE_API_URL;
-  }
-  return 'http://localhost:3010/api';
-};
-
-const API_URL = getApiUrl();
+// We use relative path '/api'. 
+// In Production: Vercel Rewrites will proxy this to http://165.245.187.238:3010/api
+// In Development: Vite Proxy will send this to http://localhost:3010/api
+const API_URL = '/api';
 
 const headers = {
   'Content-Type': 'application/json',
