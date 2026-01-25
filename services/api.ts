@@ -10,6 +10,17 @@ const headers = {
 };
 
 export const api = {
+  // Check Backend Status
+  checkConnection: async (): Promise<boolean> => {
+    try {
+      const res = await fetch(`${API_URL}/health`, { method: 'GET', signal: AbortSignal.timeout(3000) });
+      return res.ok;
+    } catch (e) {
+      console.error("Server Check Failed:", e);
+      return false;
+    }
+  },
+
   // Auth
   login: async (username: string, password: string): Promise<User | null> => {
     try {

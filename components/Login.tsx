@@ -1,6 +1,5 @@
-
 import React, { useState, useEffect } from 'react';
-import { User, Lock, Loader2, CheckCircle2 } from 'lucide-react';
+import { User, Lock, Loader2, CheckCircle2, Wifi, WifiOff } from 'lucide-react';
 import { Toast } from './Toast';
 import { api } from '../services/api';
 
@@ -13,6 +12,9 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState(false);
   
+  // Connection Status State
+  const [serverStatus, setServerStatus] = useState<'checking' | 'online' | 'offline'>('checking');
+  
   // Animation States
   const [isLoading, setIsLoading] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -20,9 +22,26 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
     show: false, message: '', type: 'success'
   });
 
+  // Check Server Status on Mount
+  useEffect(() => {
+    const checkServer = async () => {
+      setServerStatus('checking');
+      const isOnline = await api.checkConnection();
+      setServerStatus(isOnline ? 'online' : 'offline');
+      if (!isOnline) {
+         setToast({ show: true, message: 'Gagal terhubung ke Server Backend (VPS).', type: 'error' });
+      }
+    };
+    checkServer();
+  }, []);
+
   const handleLoginProcess = (e: React.FormEvent) => {
     e.preventDefault();
     if (isLoading) return;
+    if (serverStatus === 'offline') {
+        setToast({ show: true, message: 'Server Offline. Cek koneksi VPS.', type: 'error' });
+        return;
+    }
 
     if (!username || !password) {
       setToast({ show: true, message: 'Mohon isi Username dan Password', type: 'error' });
@@ -33,7 +52,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
     setProgress(0);
 
     // Simulate Network/Verification Process
-    const duration = 2000; // 2 seconds animation
+    const duration = 2000; 
     const intervalTime = 20;
     const steps = duration / intervalTime;
     let currentStep = 0;
@@ -51,8 +70,6 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
   };
 
   const finalizeLogin = async () => {
-    // Check credentials via API to decide UX flow (Success vs Error path)
-    // We check explicitly here to show the success animation before calling onLogin (which triggers global state change)
     let isValid = false;
     try {
       const user = await api.login(username, password);
@@ -67,7 +84,6 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
        setProgress(100);
        setToast({ show: true, message: 'Login Berhasil! Mengalihkan ke Dashboard...', type: 'success' });
        
-       // Delay actual navigation to let user see the "Sweet Toast"
        setTimeout(() => {
          onLogin(username, password); 
        }, 1500);
@@ -102,6 +118,23 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
             SmartInventory
             </h1>
             <p className="text-slate-400 text-xs tracking-widest mt-2 uppercase">Secure Access Portal</p>
+        </div>
+
+        {/* Server Status Indicator */}
+        <div className={`mb-6 px-4 py-2 rounded-full border flex items-center gap-2 text-xs font-semibold transition-all ${
+            serverStatus === 'online' ? 'bg-green-500/20 border-green-500/50 text-green-300' : 
+            serverStatus === 'offline' ? 'bg-red-500/20 border-red-500/50 text-red-300' : 
+            'bg-slate-500/20 border-slate-500/50 text-slate-300'
+        }`}>
+            {serverStatus === 'online' && <Wifi size={14} />}
+            {serverStatus === 'offline' && <WifiOff size={14} />}
+            {serverStatus === 'checking' && <Loader2 size={14} className="animate-spin" />}
+            
+            <span>
+                {serverStatus === 'online' ? 'Server Connected' : 
+                 serverStatus === 'offline' ? 'Server Unreachable' : 
+                 'Connecting to Backend...'}
+            </span>
         </div>
 
         <form onSubmit={handleLoginProcess} className={`w-full space-y-6 transition-all duration-300 ${error ? 'animate-shake' : ''}`}>

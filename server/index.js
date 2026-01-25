@@ -9,7 +9,6 @@ const PORT = process.env.PORT || 3010;
 
 // Middleware
 app.use(cors());
-// Increase limit for Base64 image uploads
 app.use(bodyParser.json({ limit: '50mb' }));
 app.use(bodyParser.urlencoded({ limit: '50mb', extended: true }));
 
@@ -24,30 +23,44 @@ const pool = mysql.createPool({
     queueLimit: 0
 });
 
-// --- HELPER: Convert DB snake_case to JS camelCase & Parse JSON ---
 const toCamel = (o) => {
     if (!o) return null;
     const newO = {};
     for (const key in o) {
         const newKey = key.replace(/_([a-z])/g, (g) => g[1].toUpperCase());
         newO[newKey] = o[key];
-        
-        // Auto-parse JSON columns
         if (['conversions', 'items', 'photos'].includes(newKey) && typeof o[key] === 'string') {
-             try { 
-                 newO[newKey] = JSON.parse(o[key]); 
-             } catch(e) { 
-                 newO[newKey] = []; 
-             }
+             try { newO[newKey] = JSON.parse(o[key]); } catch(e) { newO[newKey] = []; }
         } else if (['conversions', 'items', 'photos'].includes(newKey) && typeof o[key] === 'object') {
-             newO[newKey] = o[key]; // Already JSON object from driver
+             newO[newKey] = o[key];
         }
     }
     return newO;
 };
 
+// --- DEBUG & HEALTH CHECK ENDPOINTS ---
+
+// 1. Root Check (untuk cek apakah server jalan via browser)
+app.get('/', (req, res) => {
+    res.send('Inventory Backend is Running! Access API at /api');
+});
+
+// 2. Health Check (untuk cek koneksi DB dari Frontend)
+app.get('/api/health', async (req, res) => {
+    try {
+        const connection = await pool.getConnection();
+        await connection.ping();
+        connection.release();
+        res.json({ status: 'online', db: 'connected' });
+    } catch (err) {
+        console.error("Health Check Error:", err);
+        res.status(500).json({ status: 'error', db: 'disconnected', error: err.message });
+    }
+});
+
 // --- AUTHENTICATION ---
 app.post('/api/login', async (req, res) => {
+    console.log("Login Attempt:", req.body.username); // Log login attempts
     const { username, password } = req.body;
     try {
         const [rows] = await pool.query(
@@ -55,11 +68,14 @@ app.post('/api/login', async (req, res) => {
             [username, password]
         );
         if (rows.length > 0) {
+            console.log("Login Success:", username);
             res.json({ success: true, user: toCamel(rows[0]) });
         } else {
+            console.log("Login Failed: Invalid Credentials");
             res.status(401).json({ success: false, message: 'Invalid credentials' });
         }
     } catch (err) {
+        console.error("Login DB Error:", err);
         res.status(500).json({ error: err.message });
     }
 });
@@ -117,19 +133,14 @@ app.post('/api/transactions', async (req, res) => {
     try {
         await connection.beginTransaction();
         
-        // 1. Insert Transaction Record
         const sqlTx = `INSERT INTO transactions (id, type, date, reference_number, supplier, notes, photos, items, performer) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`;
         await connection.query(sqlTx, [
             tx.id, tx.type, new Date(tx.date), tx.referenceNumber, tx.supplier, tx.notes, 
             JSON.stringify(tx.photos || []), JSON.stringify(tx.items || []), tx.performer
         ]);
 
-        // 2. Update Stock Levels
         for (const item of tx.items) {
             let updateSql = '';
-            // Basic logic: IN adds stock, OUT removes stock
-            // Note: This logic assumes 'item.quantity' is already converted to base unit or handling simple units.
-            // For production with unit conversion, ensure 'item.quantity' passed here is normalized.
             if (tx.type === 'IN') {
                 updateSql = 'UPDATE inventory SET stock = stock + ? WHERE id = ?';
             } else {
@@ -150,8 +161,6 @@ app.post('/api/transactions', async (req, res) => {
 });
 
 app.put('/api/transactions/:id', async (req, res) => {
-    // Note: Updating transaction content without reverting stock logic.
-    // Full stock reversion logic is complex and usually requires a separate "Adjustment" feature.
     const tx = req.body;
     try {
         const sql = `UPDATE transactions SET date=?, reference_number=?, supplier=?, notes=?, photos=?, items=? WHERE id=?`;
@@ -240,7 +249,6 @@ app.delete('/api/users/:id', async (req, res) => {
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// Start Server
 app.listen(PORT, () => {
     console.log(`Server Backend running on http://localhost:${PORT}`);
 });
