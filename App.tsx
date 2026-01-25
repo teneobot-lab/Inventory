@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { LayoutDashboard, Package, ArrowDownLeft, ArrowUpRight, FileBarChart, Settings, Menu, X, LogOut, History as HistoryIcon, Search, Bell, AlertTriangle, ChevronRight, CheckCircle, Ban, Database, ClipboardList, ListPlus, Wifi, Clock } from 'lucide-react';
+import { LayoutDashboard, Package, ArrowDownLeft, ArrowUpRight, FileBarChart, Settings, Menu, X, LogOut, History as HistoryIcon, Search, Bell, AlertTriangle, ChevronRight, CheckCircle, Ban, Database, ClipboardList, ListPlus, Wifi, Clock, Sun, Moon } from 'lucide-react';
 import { InventoryItem, Transaction, User, RejectItem, RejectTransaction } from './types';
 import { INITIAL_ITEMS, INITIAL_TRANSACTIONS, CURRENT_USER } from './constants';
 import { Dashboard } from './components/Dashboard';
@@ -63,9 +63,14 @@ const App: React.FC = () => {
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const notificationRef = useRef<HTMLDivElement>(null);
 
-  // --- UI/UX STATE (Time & Connectivity) ---
+  // --- UI/UX STATE (Time & Connectivity & Theme) ---
   const [currentTime, setCurrentTime] = useState(new Date());
-  const [latency, setLatency] = useState<number>(24); // Default fake latency
+  const [latency, setLatency] = useState<number>(24);
+  
+  // Initialize Theme from localStorage or default to light
+  const [isDarkMode, setIsDarkMode] = useState(() => {
+    return localStorage.getItem('theme') === 'dark';
+  });
 
   // Derived State
   const filteredGlobalItems = items.filter(i => 
@@ -77,6 +82,18 @@ const App: React.FC = () => {
 
   // --- Effects ---
   
+  // Theme Effect
+  useEffect(() => {
+    const root = window.document.documentElement;
+    if (isDarkMode) {
+      root.classList.add('dark');
+      localStorage.setItem('theme', 'dark');
+    } else {
+      root.classList.remove('dark');
+      localStorage.setItem('theme', 'light');
+    }
+  }, [isDarkMode]);
+
   // Clock Interval
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -232,7 +249,7 @@ const App: React.FC = () => {
   }
 
   return (
-    <div className="flex h-screen bg-slate-50 overflow-hidden relative">
+    <div className={`flex h-screen bg-slate-50 dark:bg-slate-950 overflow-hidden relative transition-colors duration-300 ${isDarkMode ? 'dark' : ''}`}>
       
       {/* GLOBAL MEDIA PLAYER */}
       <MediaPlayer />
@@ -332,14 +349,14 @@ const App: React.FC = () => {
                 
                 {/* Autocomplete Dropdown (Keeps white background for readability) */}
                 {showGlobalSearch && globalSearchQuery && (
-                  <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-xl shadow-xl border border-slate-100 max-h-96 overflow-y-auto animate-fade-in z-50">
+                  <div className="absolute top-full left-0 right-0 mt-2 bg-white dark:bg-slate-800 rounded-xl shadow-xl border border-slate-100 dark:border-slate-700 max-h-96 overflow-y-auto animate-fade-in z-50">
                       {filteredGlobalItems.length > 0 ? (
                         <div className="py-2">
-                          <div className="px-4 py-2 text-xs font-semibold text-slate-400 uppercase tracking-wider bg-slate-50/50">Hasil Pencarian</div>
+                          <div className="px-4 py-2 text-xs font-semibold text-slate-400 uppercase tracking-wider bg-slate-50/50 dark:bg-slate-700/50">Hasil Pencarian</div>
                           {filteredGlobalItems.map(item => (
                             <button 
                               key={item.id}
-                              className="w-full text-left px-4 py-3 hover:bg-blue-50 flex items-center justify-between group transition-colors border-b border-slate-50 last:border-0"
+                              className="w-full text-left px-4 py-3 hover:bg-blue-50 dark:hover:bg-slate-700 flex items-center justify-between group transition-colors border-b border-slate-50 dark:border-slate-700 last:border-0"
                               onClick={() => {
                                  setStockCardItem(item);
                                  setGlobalSearchQuery('');
@@ -347,16 +364,16 @@ const App: React.FC = () => {
                               }}
                             >
                               <div className="flex items-center gap-3">
-                                 <div className="p-2 bg-slate-100 text-slate-500 rounded-lg group-hover:bg-blue-100 group-hover:text-blue-600 transition-colors">
+                                 <div className="p-2 bg-slate-100 dark:bg-slate-600 text-slate-500 dark:text-slate-300 rounded-lg group-hover:bg-blue-100 group-hover:text-blue-600 transition-colors">
                                    <Package size={18} />
                                  </div>
                                  <div>
-                                    <div className="font-medium text-slate-800 group-hover:text-blue-700">{item.name}</div>
-                                    <div className="text-xs text-slate-500 font-mono">{item.sku} • {item.category}</div>
+                                    <div className="font-medium text-slate-800 dark:text-slate-200 group-hover:text-blue-700">{item.name}</div>
+                                    <div className="text-xs text-slate-500 dark:text-slate-400 font-mono">{item.sku} • {item.category}</div>
                                  </div>
                               </div>
                               <div className="text-right">
-                                 <div className="text-sm font-bold text-slate-700">{item.stock} {item.unit}</div>
+                                 <div className="text-sm font-bold text-slate-700 dark:text-slate-300">{item.stock} {item.unit}</div>
                                  <div className="text-[10px] text-slate-400">Saldo Akhir</div>
                               </div>
                             </button>
@@ -386,8 +403,17 @@ const App: React.FC = () => {
                 </div>
              </div>
 
+             {/* Theme Toggle Button */}
+             <button
+               onClick={() => setIsDarkMode(!isDarkMode)}
+               className="p-2 rounded-full bg-slate-800 hover:bg-slate-700 text-yellow-400 transition-all border border-slate-700 hover:border-slate-600"
+               title={isDarkMode ? "Switch to Light Mode" : "Switch to Dark Mode"}
+             >
+               {isDarkMode ? <Moon size={18} className="text-blue-300" /> : <Sun size={18} />}
+             </button>
+
              {/* Time Widget */}
-             <div className="hidden lg:flex flex-col items-end text-right border-r border-slate-700 pr-6">
+             <div className="hidden lg:flex flex-col items-end text-right border-r border-slate-700 pr-6 border-l pl-6">
                 <span className="text-sm font-medium text-white flex items-center gap-2">
                    {currentTime.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
                    <Clock size={14} className="text-blue-400"/>
@@ -413,12 +439,12 @@ const App: React.FC = () => {
 
                 {/* Notification Dropdown */}
                 {isNotificationsOpen && (
-                  <div className="absolute right-0 mt-3 w-80 md:w-96 bg-white rounded-xl shadow-xl border border-slate-100 z-50 overflow-hidden animate-fade-in origin-top-right">
-                     <div className="p-4 border-b border-slate-50 bg-slate-50/50 flex justify-between items-center">
-                        <h3 className="font-semibold text-sm text-slate-800 flex items-center gap-2">
+                  <div className="absolute right-0 mt-3 w-80 md:w-96 bg-white dark:bg-slate-800 rounded-xl shadow-xl border border-slate-100 dark:border-slate-700 z-50 overflow-hidden animate-fade-in origin-top-right">
+                     <div className="p-4 border-b border-slate-50 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800 flex justify-between items-center">
+                        <h3 className="font-semibold text-sm text-slate-800 dark:text-slate-200 flex items-center gap-2">
                            <Bell size={14} className="text-blue-600" /> Notifikasi Stok
                         </h3>
-                        <span className="text-xs font-medium text-slate-500 bg-slate-200 px-2 py-0.5 rounded-full">
+                        <span className="text-xs font-medium text-slate-500 dark:text-slate-400 bg-slate-200 dark:bg-slate-700 px-2 py-0.5 rounded-full">
                            {lowStockItems.length} Alert
                         </span>
                      </div>
@@ -431,21 +457,21 @@ const App: React.FC = () => {
                                 setStockCardItem(item);
                                 setIsNotificationsOpen(false);
                               }}
-                              className="w-full text-left p-4 hover:bg-slate-50 border-b border-slate-50 last:border-0 flex gap-3 transition-colors group"
+                              className="w-full text-left p-4 hover:bg-slate-50 dark:hover:bg-slate-700 border-b border-slate-50 dark:border-slate-700 last:border-0 flex gap-3 transition-colors group"
                             >
                                <div className="mt-1 flex-shrink-0">
-                                  <div className="bg-red-100 p-2 rounded-full text-red-500">
+                                  <div className="bg-red-100 dark:bg-red-900/30 p-2 rounded-full text-red-500">
                                     <AlertTriangle size={16} />
                                   </div>
                                </div>
                                <div className="flex-1">
                                   <div className="flex justify-between items-start">
-                                    <p className="text-sm font-semibold text-slate-800 group-hover:text-blue-700">{item.name}</p>
+                                    <p className="text-sm font-semibold text-slate-800 dark:text-slate-200 group-hover:text-blue-700">{item.name}</p>
                                     <ChevronRight size={14} className="text-slate-300 group-hover:text-blue-400" />
                                   </div>
-                                  <p className="text-xs text-slate-500 mb-1">{item.sku}</p>
+                                  <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">{item.sku}</p>
                                   <div className="flex items-center gap-2 mt-2">
-                                     <span className="text-xs bg-red-50 text-red-600 px-2 py-0.5 rounded border border-red-100 font-medium">
+                                     <span className="text-xs bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 px-2 py-0.5 rounded border border-red-100 dark:border-red-900 font-medium">
                                         Stok: {item.stock} {item.unit}
                                      </span>
                                      <span className="text-[10px] text-slate-400">
@@ -464,7 +490,7 @@ const App: React.FC = () => {
                        )}
                      </div>
                      {lowStockItems.length > 0 && (
-                       <div className="p-3 bg-slate-50 border-t border-slate-100 text-center">
+                       <div className="p-3 bg-slate-50 dark:bg-slate-800 border-t border-slate-100 dark:border-slate-700 text-center">
                           <button 
                             onClick={() => {
                               setCurrentView(View.INVENTORY);
