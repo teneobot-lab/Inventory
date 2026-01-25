@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { LayoutDashboard, Package, ArrowDownLeft, ArrowUpRight, FileBarChart, Settings, Menu, X, LogOut, History as HistoryIcon, Search, Bell, AlertTriangle, ChevronRight, CheckCircle, Ban, Database, ClipboardList, ListPlus } from 'lucide-react';
+import { LayoutDashboard, Package, ArrowDownLeft, ArrowUpRight, FileBarChart, Settings, Menu, X, LogOut, History as HistoryIcon, Search, Bell, AlertTriangle, ChevronRight, CheckCircle, Ban, Database, ClipboardList, ListPlus, Wifi, Clock } from 'lucide-react';
 import { InventoryItem, Transaction, User, RejectItem, RejectTransaction } from './types';
 import { INITIAL_ITEMS, INITIAL_TRANSACTIONS, CURRENT_USER } from './constants';
 import { Dashboard } from './components/Dashboard';
@@ -16,6 +16,8 @@ import { RejectHistory } from './components/RejectHistory';
 import { MediaPlayer } from './components/MediaPlayer';
 // Import Report Module
 import { ReportModule } from './components/ReportModule';
+// Import Login Module
+import { Login } from './components/Login';
 
 // Router enum
 enum View {
@@ -33,6 +35,9 @@ enum View {
 }
 
 const App: React.FC = () => {
+  // --- AUTH STATE ---
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  
   const [currentView, setCurrentView] = useState<View>(View.DASHBOARD);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [expandedRejectMenu, setExpandedRejectMenu] = useState(true);
@@ -58,6 +63,10 @@ const App: React.FC = () => {
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const notificationRef = useRef<HTMLDivElement>(null);
 
+  // --- UI/UX STATE (Time & Connectivity) ---
+  const [currentTime, setCurrentTime] = useState(new Date());
+  const [latency, setLatency] = useState<number>(24); // Default fake latency
+
   // Derived State
   const filteredGlobalItems = items.filter(i => 
     i.name.toLowerCase().includes(globalSearchQuery.toLowerCase()) || 
@@ -66,7 +75,39 @@ const App: React.FC = () => {
 
   const lowStockItems = items.filter(i => i.stock <= i.minStock);
 
-  // Handlers
+  // --- Effects ---
+  
+  // Clock Interval
+  useEffect(() => {
+    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // Latency Simulation Interval
+  useEffect(() => {
+    const pingInterval = setInterval(() => {
+       // Simulate latency fluctuation between 15ms and 65ms
+       setLatency(Math.floor(Math.random() * 50) + 15);
+    }, 3000);
+    return () => clearInterval(pingInterval);
+  }, []);
+
+  // --- Handlers ---
+
+  const handleLogin = (u: string, p: string): boolean => {
+    // Hardcoded credentials as requested
+    if (u === 'admin' && p === '22') {
+      setIsAuthenticated(true);
+      return true;
+    }
+    return false;
+  };
+
+  const handleLogout = () => {
+    setIsAuthenticated(false);
+    setCurrentView(View.DASHBOARD);
+  };
+
   const handleAddItem = (item: InventoryItem) => {
     setItems(prev => [...prev, item]);
   };
@@ -185,6 +226,11 @@ const App: React.FC = () => {
     </button>
   );
 
+  // --- RENDER LOGIN IF NOT AUTHENTICATED ---
+  if (!isAuthenticated) {
+    return <Login onLogin={handleLogin} />;
+  }
+
   return (
     <div className="flex h-screen bg-slate-50 overflow-hidden relative">
       
@@ -249,7 +295,10 @@ const App: React.FC = () => {
           </nav>
 
           <div className="p-4 border-t border-slate-800">
-            <button className="flex items-center gap-3 w-full px-4 py-2 text-sm text-red-400 hover:text-red-300 transition-colors">
+            <button 
+              onClick={handleLogout}
+              className="flex items-center gap-3 w-full px-4 py-2 text-sm text-red-400 hover:text-red-300 transition-colors"
+            >
               <LogOut size={18} /> Logout
             </button>
           </div>
@@ -258,20 +307,20 @@ const App: React.FC = () => {
 
       {/* Main Content */}
       <main className="flex-1 flex flex-col h-screen overflow-hidden">
-        {/* Header */}
-        <header className="bg-white border-b border-slate-200 h-16 flex items-center justify-between px-6 z-20 relative">
-          <button onClick={toggleMobileMenu} className="lg:hidden text-slate-600">
+        {/* Header - MODIFIED FOR DARK THEME CONSISTENCY */}
+        <header className="bg-slate-900 border-b border-slate-800 h-16 flex items-center justify-between px-6 z-20 relative shadow-md">
+          <button onClick={toggleMobileMenu} className="lg:hidden text-slate-400 hover:text-white">
             <Menu size={24} />
           </button>
           
           {/* Top Bar Search with Autocomplete */}
           <div className="flex-1 px-4 lg:px-8 max-w-2xl relative">
              <div className="relative group">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 group-focus-within:text-blue-500 transition-colors" size={18} />
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-500 group-focus-within:text-blue-400 transition-colors" size={18} />
                 <input 
                   type="text" 
                   placeholder="Cari Barang (Lihat Mutasi & Stok)..." 
-                  className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 focus:bg-white transition-all shadow-sm"
+                  className="w-full pl-10 pr-4 py-2 bg-slate-800 border border-slate-700 text-white placeholder-slate-500 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-slate-900 transition-all shadow-inner"
                   value={globalSearchQuery}
                   onChange={(e) => {
                     setGlobalSearchQuery(e.target.value);
@@ -281,7 +330,7 @@ const App: React.FC = () => {
                   onBlur={() => setTimeout(() => setShowGlobalSearch(false), 200)}
                 />
                 
-                {/* Autocomplete Dropdown */}
+                {/* Autocomplete Dropdown (Keeps white background for readability) */}
                 {showGlobalSearch && globalSearchQuery && (
                   <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-xl shadow-xl border border-slate-100 max-h-96 overflow-y-auto animate-fade-in z-50">
                       {filteredGlobalItems.length > 0 ? (
@@ -325,15 +374,38 @@ const App: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-3 md:gap-6">
+             {/* Connectivity Status */}
+             <div className="hidden xl:flex items-center gap-3 px-3 py-1.5 rounded-full bg-slate-800 border border-slate-700">
+                <div className="relative flex h-3 w-3">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
+                </div>
+                <div className="flex flex-col items-start leading-none">
+                   <span className="text-[10px] text-slate-400 font-medium">SERVER</span>
+                   <span className="text-[10px] font-mono text-emerald-400">{latency} ms</span>
+                </div>
+             </div>
+
+             {/* Time Widget */}
+             <div className="hidden lg:flex flex-col items-end text-right border-r border-slate-700 pr-6">
+                <span className="text-sm font-medium text-white flex items-center gap-2">
+                   {currentTime.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
+                   <Clock size={14} className="text-blue-400"/>
+                </span>
+                <span className="text-xs text-slate-400">
+                   {currentTime.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'short', year: 'numeric' })}
+                </span>
+             </div>
+
              {/* Notification Bell */}
              <div className="relative" ref={notificationRef}>
                 <button 
                   onClick={() => setIsNotificationsOpen(!isNotificationsOpen)}
-                  className={`relative p-2 rounded-full transition-colors ${isNotificationsOpen ? 'bg-blue-50 text-blue-600' : 'text-slate-500 hover:bg-slate-100'}`}
+                  className={`relative p-2 rounded-full transition-colors ${isNotificationsOpen ? 'bg-slate-700 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}
                 >
                   <Bell size={20} />
                   {lowStockItems.length > 0 && (
-                    <span className="absolute top-1 right-1 h-4 w-4 bg-red-500 text-white text-[10px] font-bold flex items-center justify-center rounded-full border-2 border-white animate-pulse">
+                    <span className="absolute top-1 right-1 h-4 w-4 bg-red-500 text-white text-[10px] font-bold flex items-center justify-center rounded-full border-2 border-slate-900 animate-pulse">
                       {lowStockItems.length}
                     </span>
                   )}
@@ -409,12 +481,12 @@ const App: React.FC = () => {
              </div>
 
              {/* User Profile */}
-             <div className="flex items-center gap-3 border-l border-slate-200 pl-4 md:pl-6">
+             <div className="flex items-center gap-3 border-l border-slate-700 pl-4 md:pl-6">
                  <div className="text-right hidden sm:block">
-                   <p className="text-sm font-medium text-slate-800">{user.name}</p>
-                   <p className="text-xs text-slate-500 capitalize">{user.role}</p>
+                   <p className="text-sm font-medium text-white">{user.name}</p>
+                   <p className="text-xs text-slate-400 capitalize">{user.role}</p>
                  </div>
-                 <div className="h-9 w-9 bg-gradient-to-br from-blue-100 to-blue-200 text-blue-700 rounded-full flex items-center justify-center font-bold shadow-sm border border-blue-100">
+                 <div className="h-9 w-9 bg-blue-600 text-white rounded-full flex items-center justify-center font-bold shadow-md ring-2 ring-slate-700">
                    {user.name.charAt(0)}
                  </div>
              </div>
