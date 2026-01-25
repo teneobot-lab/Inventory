@@ -1,9 +1,15 @@
-/// <reference types="vite/client" />
 import { InventoryItem, Transaction, User, RejectItem, RejectTransaction } from '../types';
 
-// Use environment variable if available (Production), otherwise fallback to localhost (Development)
-// Note: In Vite, env vars are accessed via import.meta.env
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3010/api';
+// Safely access env vars
+const getApiUrl = () => {
+  // Use process.env which is replaced by Vite during build via define config
+  if (process.env.VITE_API_URL) {
+    return process.env.VITE_API_URL;
+  }
+  return 'http://localhost:3010/api';
+};
+
+const API_URL = getApiUrl();
 
 const headers = {
   'Content-Type': 'application/json',
