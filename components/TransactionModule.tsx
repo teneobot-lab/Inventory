@@ -1,8 +1,9 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { InventoryItem, Transaction, TransactionType, TransactionItem } from '../types';
-import { ArrowDownLeft, ArrowUpRight, Calendar, Search, Save, Trash2, Upload, Loader2, Image as ImageIcon, X, CheckCircle2 } from 'lucide-react';
+import { ArrowDownLeft, ArrowUpRight, Calendar, Search, Save, Trash2, Upload, Loader2, Image as ImageIcon, X, CheckCircle2, FileSpreadsheet, AlertTriangle } from 'lucide-react';
 import { Toast } from './Toast';
+import * as XLSX from 'xlsx';
 
 interface TransactionModuleProps {
   type: TransactionType;
@@ -45,10 +46,13 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
 
   const [isSaving, setIsSaving] = useState(false);
   const [showSuccessToast, setShowSuccessToast] = useState(false);
+  const [showNegativeConfirm, setShowNegativeConfirm] = useState(false);
+  const [isBulkImporting, setIsBulkImporting] = useState(false);
 
   const searchInputRef = useRef<HTMLInputElement>(null);
   const qtyInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const bulkFileRef = useRef<HTMLInputElement>(null);
 
   // --- ENHANCED FUZZY SEARCH ---
   const filteredItems = items.filter(item => {
@@ -58,12 +62,11 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
     const sku = item.sku.toLowerCase();
     const category = item.category.toLowerCase();
     
-    // Split query for multi-word fuzzy matching
     const words = query.split(' ').filter(w => w.length > 0);
     return words.every(word => 
       name.includes(word) || sku.includes(word) || category.includes(word)
     );
-  }).slice(0, 8); // Limit suggestions for performance
+  }).slice(0, 8);
 
   useEffect(() => {
     if (initialData) {
@@ -93,10 +96,76 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
     setSearchQuery('');
     setInputQty('');
     setInputUnit('');
+    setHighlightedIndex(0);
     if (onCancelEdit) onCancelEdit();
   };
 
-  // --- KEYBOARD NAVIGATION LOGIC ---
+  // --- BULK IMPORT LOGIC ---
+  const handleBulkImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsBulkImporting(true);
+    const reader = new FileReader();
+    reader.onload = async (evt) => {
+      const data = evt.target?.result;
+      if (!data) return;
+
+      const workbook = XLSX.read(data, { type: 'array' });
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      const jsonData: any[][] = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+
+      const newCartItems: TransactionItem[] = [];
+      
+      // Skip header row
+      for (let i = 1; i < jsonData.length; i++) {
+        const row = jsonData[i];
+        if (!row || row.length < 1) continue;
+
+        const rowSku = String(row[0] || '').trim();
+        const rowName = String(row[1] || '').trim();
+        const rowQty = parseFloat(String(row[2] || '0'));
+        const rowUnit = String(row[3] || 'pcs').trim();
+
+        if (!rowSku || isNaN(rowQty) || rowQty <= 0) continue;
+
+        // Cari di inventory yang ada
+        let matched = items.find(item => item.sku.toLowerCase() === rowSku.toLowerCase());
+
+        // LOGIKA: Auto-create jika SKU belum terdaftar
+        if (!matched) {
+          const autoItem: InventoryItem = {
+            id: `AUTO-${Date.now()}-${Math.floor(Math.random()*1000)}`,
+            name: rowName || `New Item (${rowSku})`,
+            sku: rowSku,
+            category: 'Imported',
+            stock: 0,
+            minStock: 5,
+            unit: rowUnit,
+            price: 0,
+            conversions: [],
+            lastUpdated: new Date().toISOString()
+          };
+          await onAddItem(autoItem);
+          matched = autoItem;
+        }
+
+        newCartItems.push({
+          itemId: matched.id,
+          itemName: matched.name,
+          sku: matched.sku,
+          quantity: rowQty,
+          unit: rowUnit || matched.unit
+        });
+      }
+
+      setCart(prev => [...prev, ...newCartItems]);
+      setIsBulkImporting(false);
+      if (bulkFileRef.current) bulkFileRef.current.value = '';
+    };
+    reader.readAsArrayBuffer(file);
+  };
+
   const handleKeyDownSearch = (e: React.KeyboardEvent) => {
     if (e.key === 'ArrowDown') {
       e.preventDefault();
@@ -126,7 +195,6 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
     setSearchQuery(item.name);
     setInputUnit(item.unit);
     setShowAutocomplete(false);
-    // Move focus to Qty field
     setTimeout(() => qtyInputRef.current?.focus(), 10);
   };
 
@@ -144,8 +212,6 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
     };
 
     setCart(prev => [...prev, newItem]);
-    
-    // RAPID FLOW: Reset and refocus search
     setSelectedItem(null);
     setSearchQuery('');
     setInputQty('');
@@ -160,12 +226,9 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
     setCart(newCart);
   };
 
-  // --- PHOTO UPLOAD LOGIC ---
   const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files) return;
-
-    // Fixed: Explicitly cast to File[] to ensure type safety with reader.readAsDataURL
     Array.from(files).forEach((file: File) => {
       const reader = new FileReader();
       reader.onload = (evt) => {
@@ -181,13 +244,32 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
     setPhotos(prev => prev.filter((_, i) => i !== index));
   };
 
-  const handleSave = async () => {
+  // --- SAVE WITH SOFT VALIDATION ---
+  const handleSaveAttempt = () => {
     if (cart.length === 0) {
       alert("Keranjang masih kosong!");
       return;
     }
 
+    // Cek Stok Negatif (Hanya untuk Keluar)
+    if (!isIncoming) {
+      const hasNegativeStock = cart.some(ci => {
+        const originalItem = items.find(i => i.id === ci.itemId);
+        return originalItem && (originalItem.stock - ci.quantity < 0);
+      });
+
+      if (hasNegativeStock) {
+        setShowNegativeConfirm(true);
+        return;
+      }
+    }
+
+    executeSave();
+  };
+
+  const executeSave = async () => {
     setIsSaving(true);
+    setShowNegativeConfirm(false);
     const transactionData: Transaction = {
       id: transactionId,
       type,
@@ -223,6 +305,38 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
         onClose={() => setShowSuccessToast(false)} 
       />
 
+      {/* MODAL KONFIRMASI STOK NEGATIF */}
+      {showNegativeConfirm && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[100] p-4">
+           <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl max-w-md w-full p-6 animate-scale-in border border-slate-200 dark:border-slate-800">
+              <div className="flex items-center gap-4 text-orange-600 mb-4">
+                 <div className="bg-orange-100 dark:bg-orange-900/30 p-3 rounded-full">
+                    <AlertTriangle size={28} />
+                 </div>
+                 <h3 className="text-xl font-bold">Peringatan Stok</h3>
+              </div>
+              <p className="text-slate-600 dark:text-slate-400 text-sm leading-relaxed mb-6">
+                Beberapa barang dalam keranjang akan mengakibatkan <span className="font-bold text-red-500">Stok Negatif (Dibawah 0)</span>. 
+                Apakah Anda yakin ingin tetap memproses transaksi ini?
+              </p>
+              <div className="flex gap-3">
+                 <button 
+                   onClick={() => setShowNegativeConfirm(false)}
+                   className="flex-1 py-3 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-xl font-bold hover:bg-slate-200 transition-colors"
+                 >
+                   Batal
+                 </button>
+                 <button 
+                   onClick={executeSave}
+                   className="flex-1 py-3 bg-orange-600 text-white rounded-xl font-bold hover:bg-orange-700 shadow-lg shadow-orange-200 dark:shadow-none transition-all active:scale-95"
+                 >
+                   Ya, Lanjutkan
+                 </button>
+              </div>
+           </div>
+        </div>
+      )}
+
       <div className="flex justify-between items-center bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-100 dark:border-slate-800 shadow-sm">
         <h2 className={`text-xl font-bold flex items-center gap-2 ${isIncoming ? 'text-green-600' : 'text-orange-600'}`}>
           {isIncoming ? <ArrowDownLeft size={24} /> : <ArrowUpRight size={24} />}
@@ -235,7 +349,6 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
 
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
         
-        {/* LEFT COLUMN: META & PHOTOS */}
         <div className="xl:col-span-4 space-y-6">
            <div className="bg-white dark:bg-slate-900 p-6 rounded-xl shadow-sm border border-slate-100 dark:border-slate-800">
               <h3 className="text-sm font-bold uppercase tracking-wider text-slate-500 mb-4 flex items-center gap-2">
@@ -294,54 +407,49 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
                   />
                 </div>
 
-                {/* MULTI PHOTO UPLOAD */}
                 <div>
                    <label className="block text-xs font-bold text-slate-500 mb-2">Dokumentasi Foto</label>
                    <div className="grid grid-cols-4 gap-2 mb-2">
                       {photos.map((p, idx) => (
                         <div key={idx} className="relative aspect-square rounded-lg border border-slate-200 overflow-hidden group">
                            <img src={p} className="w-full h-full object-cover" alt="tx photo" />
-                           <button 
-                             onClick={() => removePhoto(idx)}
-                             className="absolute top-0.5 right-0.5 bg-red-500 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
-                           >
+                           <button onClick={() => removePhoto(idx)} className="absolute top-0.5 right-0.5 bg-red-500 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
                              <X size={10} />
                            </button>
                         </div>
                       ))}
-                      <button 
-                        onClick={() => fileInputRef.current?.click()}
-                        className="aspect-square border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-lg flex items-center justify-center text-slate-400 hover:text-blue-500 hover:border-blue-500 transition-all"
-                      >
+                      <button onClick={() => fileInputRef.current?.click()} className="aspect-square border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-lg flex items-center justify-center text-slate-400 hover:text-blue-500 hover:border-blue-500 transition-all">
                          <ImageIcon size={20} />
                       </button>
                    </div>
-                   <input 
-                     ref={fileInputRef}
-                     type="file" 
-                     multiple 
-                     accept="image/*" 
-                     onChange={handlePhotoUpload} 
-                     className="hidden" 
-                   />
-                   <p className="text-[10px] text-slate-400 uppercase font-medium">PNG, JPG up to 10MB each</p>
+                   <input ref={fileInputRef} type="file" multiple accept="image/*" onChange={handlePhotoUpload} className="hidden" />
                 </div>
               </div>
            </div>
         </div>
 
-        {/* RIGHT COLUMN: ITEM ENTRY & CART */}
         <div className="xl:col-span-8 space-y-6">
            <div className="bg-white dark:bg-slate-900 p-6 rounded-xl shadow-sm border border-slate-100 dark:border-slate-800 h-full flex flex-col">
-              <h3 className="text-sm font-bold uppercase tracking-wider text-slate-500 mb-4 flex items-center gap-2">
-                 Input Barang
-                 <span className="text-[10px] bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded text-slate-400 font-normal">Fast Entry Active</span>
-              </h3>
+              <div className="flex justify-between items-center mb-4">
+                 <h3 className="text-sm font-bold uppercase tracking-wider text-slate-500 flex items-center gap-2">
+                    Input Barang
+                    <span className="text-[10px] bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded text-slate-400 font-normal">Fast Entry Active</span>
+                 </h3>
+                 <div className="flex gap-2">
+                    <button 
+                      onClick={() => bulkFileRef.current?.click()}
+                      disabled={isBulkImporting}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-green-50 text-green-700 border border-green-200 rounded-lg text-xs font-bold hover:bg-green-100 transition-colors"
+                    >
+                       {isBulkImporting ? <Loader2 size={14} className="animate-spin" /> : <FileSpreadsheet size={14} />}
+                       Bulk Import
+                    </button>
+                    <input ref={bulkFileRef} type="file" accept=".xlsx" onChange={handleBulkImport} className="hidden" />
+                 </div>
+              </div>
 
               <div className="bg-slate-50 dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 mb-4">
                  <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
-                    
-                    {/* ENHANCED SEARCH */}
                     <div className="md:col-span-6 relative">
                        <label className="block text-[10px] font-bold text-slate-400 mb-1 uppercase tracking-tighter">1. Cari Barang (SKU / Nama)</label>
                        <div className="relative">
@@ -362,21 +470,17 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
                             className="w-full pl-10 pr-4 py-2 bg-white dark:bg-slate-900 border dark:border-slate-700 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500/40"
                           />
                        </div>
-                       
-                       {/* AUTOCOMPLETE DROPDOWN */}
                        {showAutocomplete && searchQuery && !selectedItem && filteredItems.length > 0 && (
                          <div className="absolute z-20 w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-2xl mt-1 overflow-hidden animate-scale-in">
                             {filteredItems.map((item, idx) => (
                               <div 
                                 key={item.id}
                                 onClick={() => selectItem(item)}
-                                className={`p-3 text-sm cursor-pointer border-b dark:border-slate-700 last:border-0 transition-colors flex justify-between items-center ${
-                                  idx === highlightedIndex ? 'bg-blue-600 text-white' : 'hover:bg-slate-50 dark:hover:bg-slate-700'
-                                }`}
+                                className={`p-3 text-sm cursor-pointer border-b dark:border-slate-700 last:border-0 transition-colors flex justify-between items-center ${idx === highlightedIndex ? 'bg-blue-600 text-white' : 'hover:bg-slate-50 dark:hover:bg-slate-700'}`}
                               >
                                 <div>
                                   <div className="font-bold">{item.name}</div>
-                                  <div className={`text-[10px] ${idx === highlightedIndex ? 'text-blue-100' : 'text-slate-400'}`}>{item.sku} • {item.category}</div>
+                                  <div className={`text-[10px] ${idx === highlightedIndex ? 'text-blue-100' : 'text-slate-400'}`}>{item.sku}</div>
                                 </div>
                                 <div className={`text-xs font-bold px-2 py-1 rounded ${idx === highlightedIndex ? 'bg-blue-500' : 'bg-slate-100 dark:bg-slate-700'}`}>
                                   {item.stock} {item.unit}
@@ -385,7 +489,6 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
                             ))}
                          </div>
                        )}
-
                        {selectedItem && (
                          <div className="absolute top-1/2 -translate-y-1/2 right-3 text-green-500 flex items-center gap-1 animate-scale-in">
                             <CheckCircle2 size={16} />
@@ -393,27 +496,20 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
                        )}
                     </div>
 
-                    {/* QUANTITY (NO SPINNERS) */}
                     <div className="md:col-span-3">
                        <label className="block text-[10px] font-bold text-slate-400 mb-1 uppercase tracking-tighter">2. Qty</label>
-                       <div className="relative">
-                          <input 
-                            ref={qtyInputRef}
-                            type="text"
-                            inputMode="numeric"
-                            value={inputQty}
-                            onChange={e => {
-                              const val = e.target.value.replace(/[^0-9.]/g, '');
-                              setInputQty(val);
-                            }}
-                            onKeyDown={handleKeyDownQty}
-                            placeholder="0"
-                            className="w-full border dark:border-slate-700 dark:bg-slate-900 rounded-lg p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500/40 font-bold [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                          />
-                       </div>
+                       <input 
+                         ref={qtyInputRef}
+                         type="text"
+                         inputMode="numeric"
+                         value={inputQty}
+                         onChange={e => setInputQty(e.target.value.replace(/[^0-9.]/g, ''))}
+                         onKeyDown={handleKeyDownQty}
+                         placeholder="0"
+                         className="w-full border dark:border-slate-700 dark:bg-slate-900 rounded-lg p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500/40 font-bold"
+                       />
                     </div>
 
-                    {/* UNIT SELECTION */}
                     <div className="md:col-span-3">
                        <label className="block text-[10px] font-bold text-slate-400 mb-1 uppercase tracking-tighter">3. Satuan</label>
                        <select 
@@ -435,7 +531,6 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
                  </div>
               </div>
 
-              {/* CART TABLE */}
               <div className="flex-1 overflow-auto border dark:border-slate-700 rounded-xl">
                 <table className="w-full text-left text-sm">
                   <thead className="bg-slate-50 dark:bg-slate-800 text-slate-500 text-[10px] uppercase font-bold sticky top-0">
@@ -464,16 +559,6 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
                         </td>
                       </tr>
                     ))}
-                    {cart.length === 0 && (
-                      <tr>
-                        <td colSpan={3} className="px-4 py-16 text-center text-slate-400 italic">
-                          <div className="flex flex-col items-center gap-2">
-                             <ShoppingCart size={32} className="opacity-10"/>
-                             <span>Keranjang masih kosong. Gunakan Search & Enter untuk menambah.</span>
-                          </div>
-                        </td>
-                      </tr>
-                    )}
                   </tbody>
                 </table>
               </div>
@@ -483,11 +568,9 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
                     Total Item: <span className="font-bold text-slate-800 dark:text-slate-200">{cart.length}</span>
                  </div>
                  <button 
-                   onClick={handleSave}
+                   onClick={handleSaveAttempt}
                    disabled={isSaving || cart.length === 0}
-                   className={`flex items-center gap-2 px-8 py-3 rounded-xl text-white font-bold shadow-lg transition-all active:scale-95 ${
-                     isIncoming ? 'bg-green-600 hover:bg-green-700 shadow-green-200 dark:shadow-none' : 'bg-orange-600 hover:bg-orange-700 shadow-orange-200 dark:shadow-none'
-                   } disabled:opacity-50`}
+                   className={`flex items-center gap-2 px-8 py-3 rounded-xl text-white font-bold shadow-lg transition-all active:scale-95 ${isIncoming ? 'bg-green-600 hover:bg-green-700' : 'bg-orange-600 hover:bg-orange-700'} disabled:opacity-50`}
                  >
                    {isSaving ? <Loader2 size={20} className="animate-spin" /> : <Save size={20} />}
                    {isSaving ? 'Menyimpan...' : 'Simpan Transaksi'}

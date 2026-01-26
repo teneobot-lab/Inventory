@@ -1,5 +1,5 @@
 
-import React, { Component, ErrorInfo, ReactNode } from 'react';
+import React, { ErrorInfo, ReactNode } from 'react';
 import { AlertTriangle, RefreshCw, Home, Copy } from 'lucide-react';
 
 interface Props {
@@ -14,22 +14,26 @@ interface State {
 
 /**
  * ErrorBoundary class component to catch rendering errors in the component tree.
- * Explicitly extending Component from React resolves potential issues where TS 
- * might not correctly infer members when using React.Component.
+ * Using React.Component and explicit constructor to resolve issues with property 
+ * access and setState method identification in some TypeScript environments.
  */
-export class ErrorBoundary extends Component<Props, State> {
-  public state: State = {
-    hasError: false,
-    error: null,
-    errorInfo: null,
-  };
+export class ErrorBoundary extends React.Component<Props, State> {
+  // Fix: Explicit constructor ensures base class is initialized with props correctly
+  constructor(props: Props) {
+    super(props);
+    this.state = {
+      hasError: false,
+      error: null,
+      errorInfo: null,
+    };
+  }
 
   public static getDerivedStateFromError(error: Error): State {
     // Update state so the next render will show the fallback UI.
     return { hasError: true, error, errorInfo: null };
   }
 
-  // Handle errors caught during rendering
+  // Fix: Properly call setState from the inherited React.Component class
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     // You can also log the error to an error reporting service
     console.error("Uncaught error:", error, errorInfo);
@@ -52,7 +56,7 @@ export class ErrorBoundary extends Component<Props, State> {
     }
   };
 
-  // Render method returns children or an error fallback UI
+  // Fix: Correctly access this.props in the render method to resolve "Property 'props' does not exist" error
   public render() {
     if (this.state.hasError) {
       return (
