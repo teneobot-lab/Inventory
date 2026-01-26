@@ -3,7 +3,9 @@ import React, { Component, ErrorInfo, ReactNode } from 'react';
 import { AlertTriangle, RefreshCw, Home, Copy } from 'lucide-react';
 
 interface Props {
-  // Fix: children made optional to resolve "Property 'children' is missing" error in index.tsx
+  /**
+   * Children components to be wrapped by the error boundary.
+   */
   children?: ReactNode;
 }
 
@@ -16,9 +18,9 @@ interface State {
 /**
  * ErrorBoundary class component to catch rendering errors in the component tree.
  */
-// Fix: Explicitly extending React.Component to ensure TypeScript recognizes inherited properties like state, setState, and props
-export class ErrorBoundary extends React.Component<Props, State> {
-  // Fix: Explicit constructor and state initialization to resolve property 'state' does not exist
+// Fix: Inherit from Component<Props, State> to ensure TypeScript correctly resolves inherited members like this.state, this.props, and this.setState
+export class ErrorBoundary extends Component<Props, State> {
+  // Fix: Explicit constructor for initializing state in the class component
   constructor(props: Props) {
     super(props);
     this.state = {
@@ -28,15 +30,15 @@ export class ErrorBoundary extends React.Component<Props, State> {
     };
   }
 
-  // Fix: Properly implement static method for state derivation from error
+  // Fix: Static method for handling error state derivation
   public static getDerivedStateFromError(error: Error): State {
     // Update state so the next render will show the fallback UI.
     return { hasError: true, error, errorInfo: null };
   }
 
-  // Fix: Properly call setState from the inherited Component class and handle lifecycle
+  // Fix: Lifecycle method to capture error information and update component state
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    // You can also log the error to an error reporting service
+    // Log the error to console for debugging
     console.error("Uncaught error:", error, errorInfo);
     this.setState({ errorInfo });
   }
@@ -50,14 +52,15 @@ export class ErrorBoundary extends React.Component<Props, State> {
   };
 
   private handleCopyError = () => {
-    // Fix: Correctly access this.state to retrieve error information
+    // Fix: Access state property from the class instance to retrieve error details
     if (this.state.error) {
-        navigator.clipboard.writeText(`${this.state.error.toString()}\n${this.state.errorInfo?.componentStack}`);
+        const errorDetails = `${this.state.error.toString()}\n${this.state.errorInfo?.componentStack || ''}`;
+        navigator.clipboard.writeText(errorDetails);
         alert("Error log copied to clipboard.");
     }
   };
 
-  // Fix: Correctly access this.props and this.state through class inheritance in the render method
+  // Fix: Render method that correctly accesses this.state and this.props from the inherited class
   public render() {
     if (this.state.hasError) {
       return (

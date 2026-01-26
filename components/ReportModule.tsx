@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { InventoryItem, Transaction } from '../types';
 import { FileText, FileSpreadsheet, Search, Filter, Calendar, Download, RefreshCw } from 'lucide-react';
@@ -103,11 +104,8 @@ export const ReportModule: React.FC<ReportModuleProps> = ({ items, transactions 
     }
 
     const doc = new jsPDF();
-
-    // Header
     doc.setFontSize(16);
     doc.text("Laporan Transaksi Barang", 14, 15);
-    
     doc.setFontSize(10);
     doc.text(`Periode: ${startDate} s/d ${endDate}`, 14, 22);
     doc.text(`Tipe: ${filterType} | Item: ${selectedItemId === 'ALL' ? 'Semua' : items.find(i => i.id === selectedItemId)?.name}`, 14, 27);
@@ -133,7 +131,7 @@ export const ReportModule: React.FC<ReportModuleProps> = ({ items, transactions 
       body: tableRows,
       startY: 35,
       styles: { fontSize: 8 },
-      headStyles: { fillColor: [47, 53, 66] } // Slate-800 equivalent
+      headStyles: { fillColor: [47, 53, 66] }
     });
 
     doc.save(`Laporan_Stok_${startDate}_sd_${endDate}.pdf`);
@@ -150,150 +148,146 @@ export const ReportModule: React.FC<ReportModuleProps> = ({ items, transactions 
     <div className="space-y-6 animate-fade-in">
       <div className="flex justify-between items-center">
         <div>
-           <h2 className="text-2xl font-bold text-slate-800">Laporan & Export</h2>
-           <p className="text-sm text-slate-500">Generate laporan per barang, tanggal, dan jenis transaksi.</p>
+           <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Laporan & Export</h2>
+           <p className="text-sm text-slate-500 dark:text-slate-400">Generate laporan per barang, tanggal, dan jenis transaksi.</p>
         </div>
       </div>
 
       {/* FILTER SECTION */}
-      <div className="bg-white p-5 rounded-xl shadow-sm border border-slate-100">
-         <div className="flex items-center gap-2 mb-4 text-slate-700 font-semibold border-b border-slate-50 pb-2">
-            <Filter size={18} /> Filter Laporan
+      <div className="bg-white dark:bg-slate-900 p-6 rounded-xl shadow-sm border border-slate-100 dark:border-slate-800">
+         <div className="flex items-center gap-2 mb-6 text-slate-700 dark:text-slate-200 font-bold border-b border-slate-50 dark:border-slate-800 pb-3">
+            <Filter size={18} /> Parameter Laporan
          </div>
          
-         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-            {/* Date Range */}
+         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
             <div>
-               <label className="text-xs font-semibold text-slate-500 mb-1 block">Dari Tanggal</label>
+               <label className="text-xs font-bold text-slate-500 dark:text-slate-400 mb-2 block uppercase tracking-wider">Dari Tanggal</label>
                <input 
                  type="date" 
-                 className="w-full border border-slate-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                 className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-3 text-sm focus:ring-2 focus:ring-blue-500/20 outline-none text-slate-800 dark:text-slate-200"
                  value={startDate}
                  onChange={e => setStartDate(e.target.value)}
                />
             </div>
             <div>
-               <label className="text-xs font-semibold text-slate-500 mb-1 block">Sampai Tanggal</label>
+               <label className="text-xs font-bold text-slate-500 dark:text-slate-400 mb-2 block uppercase tracking-wider">Sampai Tanggal</label>
                <input 
                  type="date" 
-                 className="w-full border border-slate-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                 className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-3 text-sm focus:ring-2 focus:ring-blue-500/20 outline-none text-slate-800 dark:text-slate-200"
                  value={endDate}
                  onChange={e => setEndDate(e.target.value)}
                />
             </div>
 
-            {/* Transaction Type */}
             <div>
-               <label className="text-xs font-semibold text-slate-500 mb-1 block">Jenis Transaksi</label>
+               <label className="text-xs font-bold text-slate-500 dark:text-slate-400 mb-2 block uppercase tracking-wider">Tipe Transaksi</label>
                <select 
-                 className="w-full border border-slate-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                 className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-3 text-sm focus:ring-2 focus:ring-blue-500/20 outline-none text-slate-800 dark:text-slate-200 cursor-pointer"
                  value={filterType}
                  onChange={(e) => setFilterType(e.target.value as any)}
                >
-                 <option value="ALL">Semua (IN & OUT)</option>
-                 <option value="IN">Masuk (IN)</option>
-                 <option value="OUT">Keluar (OUT)</option>
+                 <option value="ALL">Semua Aliran</option>
+                 <option value="IN">Masuk Saja (IN)</option>
+                 <option value="OUT">Keluar Saja (OUT)</option>
                </select>
             </div>
 
-            {/* Item Select */}
             <div>
-               <label className="text-xs font-semibold text-slate-500 mb-1 block">Spesifik Barang</label>
+               <label className="text-xs font-bold text-slate-500 dark:text-slate-400 mb-2 block uppercase tracking-wider">Filter Barang</label>
                <select 
-                 className="w-full border border-slate-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                 className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-3 text-sm focus:ring-2 focus:ring-blue-500/20 outline-none text-slate-800 dark:text-slate-200 cursor-pointer"
                  value={selectedItemId}
                  onChange={(e) => setSelectedItemId(e.target.value)}
                >
-                 <option value="ALL">Semua Barang</option>
+                 <option value="ALL">Semua Katalog</option>
                  {items.map(item => (
                    <option key={item.id} value={item.id}>{item.name}</option>
                  ))}
                </select>
             </div>
 
-            {/* Reset Button */}
             <div className="flex items-end">
                <button 
                  onClick={handleResetFilters}
-                 className="w-full flex items-center justify-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-600 font-medium py-2 rounded-lg transition-colors text-sm"
+                 className="w-full flex items-center justify-center gap-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 font-bold py-3 rounded-xl transition-all text-sm border border-transparent dark:border-slate-700 shadow-sm"
                >
-                 <RefreshCw size={16} /> Reset Filter
+                 <RefreshCw size={16} /> Reset
                </button>
             </div>
          </div>
       </div>
 
       {/* ACTION & PREVIEW SECTION */}
-      <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
-         <div className="p-4 border-b border-slate-100 flex flex-col sm:flex-row justify-between items-center gap-4 bg-slate-50/50">
-            <div className="text-sm font-semibold text-slate-700">
-               Preview Data <span className="text-slate-400 font-normal">({filteredData.length} baris ditemukan)</span>
+      <div className="bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-100 dark:border-slate-800 overflow-hidden flex flex-col">
+         <div className="p-5 border-b border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row justify-between items-center gap-4 bg-slate-50/50 dark:bg-slate-800/50">
+            <div className="text-sm font-bold text-slate-700 dark:text-slate-200 uppercase tracking-tighter">
+               Laporan Preview <span className="text-slate-400 dark:text-slate-500 font-normal ml-2">[{filteredData.length} records matched]</span>
             </div>
-            <div className="flex gap-2 w-full sm:w-auto">
+            <div className="flex gap-3 w-full sm:w-auto">
                <button 
                  onClick={handleExportPDF}
-                 className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm"
+                 className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-red-600 hover:bg-red-700 text-white px-5 py-2.5 rounded-xl text-sm font-bold transition-all shadow-lg shadow-red-200 dark:shadow-none active:scale-95"
                >
-                 <FileText size={16} /> Export PDF
+                 <FileText size={18} /> PDF
                </button>
                <button 
                  onClick={handleExportExcel}
-                 className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm"
+                 className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-green-600 hover:bg-green-700 text-white px-5 py-2.5 rounded-xl text-sm font-bold transition-all shadow-lg shadow-green-200 dark:shadow-none active:scale-95"
                >
-                 <FileSpreadsheet size={16} /> Export Excel
+                 <FileSpreadsheet size={18} /> EXCEL
                </button>
             </div>
          </div>
 
          {/* TABLE PREVIEW */}
-         <div className="overflow-x-auto max-h-[500px]">
-            <table className="w-full text-left text-sm text-slate-600">
-               <thead className="bg-slate-100 text-slate-700 uppercase text-xs font-bold sticky top-0 shadow-sm z-10">
+         <div className="overflow-x-auto max-h-[550px] scrollbar-thin scrollbar-thumb-slate-200 dark:scrollbar-thumb-slate-700">
+            <table className="w-full text-left text-sm text-slate-600 dark:text-slate-400">
+               <thead className="bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 uppercase text-xs font-bold sticky top-0 shadow-sm z-10">
                   <tr>
-                     <th className="px-6 py-3">Tanggal</th>
-                     <th className="px-6 py-3">ID & Tipe</th>
-                     <th className="px-6 py-3">Barang</th>
-                     <th className="px-6 py-3 text-right">Qty</th>
-                     <th className="px-6 py-3">Info Tambahan</th>
+                     <th className="px-6 py-4">Tanggal</th>
+                     <th className="px-6 py-4">ID & Alur</th>
+                     <th className="px-6 py-4">Item Catalog</th>
+                     <th className="px-6 py-4 text-right">Vol</th>
+                     <th className="px-6 py-4">Metadata</th>
                   </tr>
                </thead>
-               <tbody className="divide-y divide-slate-100">
+               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                   {filteredData.map((row, idx) => (
-                     <tr key={`${row.id}-${idx}`} className="hover:bg-slate-50">
-                        <td className="px-6 py-3 whitespace-nowrap">
+                     <tr key={`${row.id}-${idx}`} className="hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors">
+                        <td className="px-6 py-4 whitespace-nowrap font-medium text-slate-900 dark:text-slate-200">
                            {row.date}
                         </td>
-                        <td className="px-6 py-3">
-                           <div className="font-mono text-xs text-slate-500">{row.id}</div>
+                        <td className="px-6 py-4">
+                           <div className="font-mono text-[10px] text-slate-400 mb-1">{row.id}</div>
                            <div>
                               {row.type === 'IN' 
-                                ? <span className="text-xs font-bold text-green-600 bg-green-50 px-1 rounded">IN</span>
-                                : <span className="text-xs font-bold text-orange-600 bg-orange-50 px-1 rounded">OUT</span>
+                                ? <span className="text-[10px] font-bold text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/30 px-2 py-0.5 rounded border border-green-100 dark:border-green-900/50">MASUK</span>
+                                : <span className="text-[10px] font-bold text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-900/30 px-2 py-0.5 rounded border border-orange-100 dark:border-orange-900/50">KELUAR</span>
                               }
                            </div>
                         </td>
-                        <td className="px-6 py-3">
-                           <div className="font-medium text-slate-800">{row.itemName}</div>
-                           <div className="text-xs text-slate-400 font-mono">{row.sku}</div>
+                        <td className="px-6 py-4">
+                           <div className="font-bold text-slate-800 dark:text-slate-200">{row.itemName}</div>
+                           <div className="text-[10px] text-slate-500 dark:text-slate-400 font-mono">{row.sku}</div>
                         </td>
-                        <td className="px-6 py-3 text-right font-semibold">
-                           {row.quantity} <span className="text-xs font-normal text-slate-500">{row.unit}</span>
+                        <td className="px-6 py-4 text-right">
+                           <span className="font-bold text-slate-900 dark:text-slate-100">{row.quantity}</span> <span className="text-[10px] text-slate-400">{row.unit}</span>
                         </td>
-                        <td className="px-6 py-3 text-xs">
-                           <div className="grid grid-cols-[60px_1fr] gap-1">
-                              <span className="text-slate-400">Ref:</span> <span className="truncate">{row.reference}</span>
-                              <span className="text-slate-400">Supp:</span> <span className="truncate">{row.supplier}</span>
-                              <span className="text-slate-400">Note:</span> <span className="italic truncate">{row.notes}</span>
+                        <td className="px-6 py-4 text-[11px] leading-relaxed">
+                           <div className="flex flex-col gap-1">
+                              <span className="text-slate-400">Ref: <span className="text-slate-600 dark:text-slate-300 font-medium">{row.reference}</span></span>
+                              <span className="text-slate-400">Supp: <span className="text-slate-600 dark:text-slate-300 font-medium">{row.supplier}</span></span>
+                              {row.notes && <span className="italic text-slate-500 dark:text-slate-400 truncate max-w-[200px] bg-slate-50 dark:bg-slate-800 p-1 rounded">"{row.notes}"</span>}
                            </div>
                         </td>
                      </tr>
                   ))}
                   {filteredData.length === 0 && (
                      <tr>
-                        <td colSpan={5} className="px-6 py-12 text-center text-slate-400">
-                           <div className="flex flex-col items-center gap-2">
-                              <Search size={32} className="opacity-20"/>
-                              <p>Tidak ada data yang sesuai dengan filter.</p>
+                        <td colSpan={5} className="px-6 py-24 text-center text-slate-400">
+                           <div className="flex flex-col items-center gap-3">
+                              <Search size={48} className="opacity-10 dark:opacity-5"/>
+                              <p className="text-sm font-medium">No records found matching criteria.</p>
                            </div>
                         </td>
                      </tr>
