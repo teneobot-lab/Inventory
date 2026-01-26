@@ -1,3 +1,4 @@
+
 require('dotenv').config();
 const express = require('express');
 const mysql = require('mysql2/promise');
@@ -24,10 +25,6 @@ const pool = mysql.createPool({
     timezone: '+07:00'
 });
 
-/**
- * Robust Snake to Camel mapping.
- * Menangani kolom JSON (conversions, items, photos) agar tidak double-parse.
- */
 const toCamel = (o) => {
     if (!o || typeof o !== 'object') return o;
     const newO = {};
@@ -53,10 +50,8 @@ const toCamel = (o) => {
                 value = [];
             }
         }
-
         newO[newKey] = value;
     });
-    
     return newO;
 };
 
@@ -76,18 +71,13 @@ app.get('/api/health', async (req, res) => {
 app.post('/api/login', async (req, res) => {
     const { username, password } = req.body;
     try {
-        const [rows] = await pool.query(
-            'SELECT * FROM users WHERE username = ? AND password = ?', 
-            [username, password]
-        );
+        const [rows] = await pool.query('SELECT * FROM users WHERE username = ? AND password = ?', [username, password]);
         if (rows.length > 0) {
             res.json({ success: true, user: toCamel(rows[0]) });
         } else {
             res.status(401).json({ success: false, message: 'Invalid credentials' });
         }
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
+    } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 app.get('/api/users', async (req, res) => {
@@ -100,10 +90,7 @@ app.get('/api/users', async (req, res) => {
 app.post('/api/users', async (req, res) => {
     const u = req.body;
     try {
-        await pool.query(
-            'INSERT INTO users (id, name, username, password, role, email) VALUES (?, ?, ?, ?, ?, ?)',
-            [u.id, u.name, u.username, u.password, u.role, u.email]
-        );
+        await pool.query('INSERT INTO users (id, name, username, password, role, email) VALUES (?, ?, ?, ?, ?, ?)', [u.id, u.name, u.username, u.password, u.role, u.email]);
         res.json({ success: true });
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -122,10 +109,7 @@ app.post('/api/inventory', async (req, res) => {
         const sql = `INSERT INTO inventory (id, name, sku, category, stock, min_stock, unit, conversions, price, last_updated) 
                      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) 
                      ON DUPLICATE KEY UPDATE name=VALUES(name), sku=VALUES(sku), category=VALUES(category), stock=VALUES(stock), min_stock=VALUES(min_stock), unit=VALUES(unit), conversions=VALUES(conversions), price=VALUES(price), last_updated=VALUES(last_updated)`;
-        await pool.query(sql, [
-            item.id, item.name, item.sku, item.category, item.stock, item.minStock, item.unit, 
-            JSON.stringify(item.conversions || []), item.price, new Date()
-        ]);
+        await pool.query(sql, [item.id, item.name, item.sku, item.category, item.stock, item.minStock, item.unit, JSON.stringify(item.conversions || []), item.price, new Date()]);
         res.json({ success: true });
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -142,15 +126,12 @@ app.get('/api/transactions', async (req, res) => {
     let connection;
     try {
         connection = await pool.getConnection();
-        await connection.query('SET SESSION sort_buffer_size = 1048576 * 4'); // Fix Sort Memory
         const [rows] = await connection.query('SELECT * FROM transactions ORDER BY date DESC, id DESC');
         res.json(rows.map(toCamel));
     } catch (err) { 
         console.error("GET TRANSACTIONS ERROR:", err);
         res.status(500).json({ success: false, error: err.message }); 
-    } finally {
-        if (connection) connection.release();
-    }
+    } finally { if (connection) connection.release(); }
 });
 
 app.post('/api/transactions', async (req, res) => {
@@ -159,28 +140,69 @@ app.post('/api/transactions', async (req, res) => {
     try {
         await connection.beginTransaction();
         const sqlTx = `INSERT INTO transactions (id, type, date, reference_number, supplier, notes, photos, items, performer) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`;
-        await connection.query(sqlTx, [
-            tx.id, tx.type, new Date(tx.date), tx.referenceNumber || null, tx.supplier || null, tx.notes || '', 
-            JSON.stringify(tx.photos || []), JSON.stringify(tx.items || []), tx.performer || 'Admin'
-        ]);
+        await connection.query(sqlTx, [tx.id, tx.type, new Date(tx.date), tx.referenceNumber || null, tx.supplier || null, tx.notes || '', JSON.stringify(tx.photos || []), JSON.stringify(tx.items || []), tx.performer || 'Admin']);
 
         const items = Array.isArray(tx.items) ? tx.items : [];
         for (const item of items) {
-            let updateSql = tx.type === 'IN' 
-                ? 'UPDATE inventory SET stock = stock + ? WHERE id = ?'
-                : 'UPDATE inventory SET stock = stock - ? WHERE id = ?';
+            let updateSql = tx.type === 'IN' ? 'UPDATE inventory SET stock = stock + ? WHERE id = ?' : 'UPDATE inventory SET stock = stock - ? WHERE id = ?';
             await connection.query(updateSql, [item.quantity, item.itemId]);
+        }
+        await connection.commit();
+        res.json({ success: true });
+    } catch (err) {
+        await connection.rollback();
+        res.status(500).json({ success: false, error: err.message });
+    } finally { connection.release(); }
+});
+
+/**
+ * REFACTOR: PUT Transaction with Stock Balancing
+ */
+app.put('/api/transactions/:id', async (req, res) => {
+    const txId = req.params.id;
+    const newTxData = req.body;
+    const connection = await pool.getConnection();
+    try {
+        await connection.beginTransaction();
+        
+        // 1. Get Old Data
+        const [oldRows] = await connection.query('SELECT * FROM transactions WHERE id = ?', [txId]);
+        if (oldRows.length === 0) throw new Error("Transaction not found");
+        const oldTx = toCamel(oldRows[0]);
+
+        // 2. REVERT Old Stock
+        const oldItems = Array.isArray(oldTx.items) ? oldTx.items : [];
+        for (const item of oldItems) {
+            let revertSql = oldTx.type === 'IN' ? 'UPDATE inventory SET stock = stock - ? WHERE id = ?' : 'UPDATE inventory SET stock = stock + ? WHERE id = ?';
+            await connection.query(revertSql, [item.quantity, item.itemId]);
+        }
+
+        // 3. UPDATE Transaction Record
+        const updateSql = `UPDATE transactions SET date=?, reference_number=?, supplier=?, notes=?, photos=?, items=?, performer=? WHERE id=?`;
+        await connection.query(updateSql, [
+            new Date(newTxData.date), 
+            newTxData.referenceNumber || null, 
+            newTxData.supplier || null, 
+            newTxData.notes || '', 
+            JSON.stringify(newTxData.photos || []), 
+            JSON.stringify(newTxData.items || []), 
+            newTxData.performer || 'Admin',
+            txId
+        ]);
+
+        // 4. APPLY New Stock
+        const newItems = Array.isArray(newTxData.items) ? newTxData.items : [];
+        for (const item of newItems) {
+            let applySql = oldTx.type === 'IN' ? 'UPDATE inventory SET stock = stock + ? WHERE id = ?' : 'UPDATE inventory SET stock = stock - ? WHERE id = ?';
+            await connection.query(applySql, [item.quantity, item.itemId]);
         }
 
         await connection.commit();
         res.json({ success: true });
     } catch (err) {
         await connection.rollback();
-        console.error("POST TRANSACTION ERROR:", err);
         res.status(500).json({ success: false, error: err.message });
-    } finally {
-        connection.release();
-    }
+    } finally { connection.release(); }
 });
 
 app.delete('/api/transactions/:id', async (req, res) => {
@@ -205,9 +227,7 @@ app.delete('/api/transactions/:id', async (req, res) => {
     } finally { connection.release(); }
 });
 
-// --- REJECT MODULE (MISSING ROUTES FIXED) ---
-
-// 1. Master Data Reject
+// --- REJECT MODULE ---
 app.get('/api/reject/master', async (req, res) => {
     try {
         const [rows] = await pool.query('SELECT * FROM reject_master ORDER BY name ASC');
@@ -219,9 +239,7 @@ app.post('/api/reject/master', async (req, res) => {
     const item = req.body;
     try {
         const sql = `INSERT INTO reject_master (id, name, sku, category, base_unit, conversions) VALUES (?, ?, ?, ?, ?, ?)`;
-        await pool.query(sql, [
-            item.id, item.name, item.sku, item.category, item.baseUnit, JSON.stringify(item.conversions || [])
-        ]);
+        await pool.query(sql, [item.id, item.name, item.sku, item.category, item.baseUnit, JSON.stringify(item.conversions || [])]);
         res.json({ success: true });
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -233,7 +251,6 @@ app.delete('/api/reject/master/:id', async (req, res) => {
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// 2. Transaksi Reject
 app.get('/api/reject/transactions', async (req, res) => {
     try {
         const [rows] = await pool.query('SELECT * FROM reject_transactions ORDER BY date DESC, id DESC');
@@ -245,14 +262,9 @@ app.post('/api/reject/transactions', async (req, res) => {
     const tx = req.body;
     try {
         const sql = `INSERT INTO reject_transactions (id, date, items, created_at) VALUES (?, ?, ?, ?)`;
-        await pool.query(sql, [
-            tx.id, new Date(tx.date), JSON.stringify(tx.items || []), new Date()
-        ]);
+        await pool.query(sql, [tx.id, new Date(tx.date), JSON.stringify(tx.items || []), new Date()]);
         res.json({ success: true });
-    } catch (err) { 
-        console.error("POST REJECT TRANSACTION ERROR:", err);
-        res.status(500).json({ error: err.message }); 
-    }
+    } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 app.listen(PORT, () => {

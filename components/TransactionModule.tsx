@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { InventoryItem, Transaction, TransactionType, TransactionItem } from '../types';
-import { ArrowDownLeft, ArrowUpRight, Calendar, Search, Save, Trash2, Upload, Loader2, Image as ImageIcon, X, CheckCircle2, FileSpreadsheet, AlertTriangle } from 'lucide-react';
+import { ArrowDownLeft, ArrowUpRight, Calendar, Search, Save, Trash2, Upload, Loader2, Image as ImageIcon, X, CheckCircle2, FileSpreadsheet, AlertTriangle, Download } from 'lucide-center';
 import { Toast } from './Toast';
 import * as XLSX from 'xlsx';
 
@@ -54,7 +54,16 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const bulkFileRef = useRef<HTMLInputElement>(null);
 
-  // --- ENHANCED FUZZY SEARCH ---
+  // --- TEMPLATE DOWNLOAD LOGIC ---
+  const handleDownloadTemplate = () => {
+    const headers = [["SKU", "Nama Barang", "Qty", "Satuan"]];
+    const sampleData = [["ELEC-001", "Laptop Gaming", "5", "unit"]];
+    const ws = XLSX.utils.aoa_to_sheet([...headers, ...sampleData]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Template Import");
+    XLSX.writeFile(wb, `Template_Bulk_${type}.xlsx`);
+  };
+
   const filteredItems = items.filter(item => {
     if (!searchQuery) return false;
     const query = searchQuery.toLowerCase();
@@ -100,7 +109,6 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
     if (onCancelEdit) onCancelEdit();
   };
 
-  // --- BULK IMPORT LOGIC ---
   const handleBulkImport = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -117,7 +125,6 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
 
       const newCartItems: TransactionItem[] = [];
       
-      // Skip header row
       for (let i = 1; i < jsonData.length; i++) {
         const row = jsonData[i];
         if (!row || row.length < 1) continue;
@@ -129,10 +136,8 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
 
         if (!rowSku || isNaN(rowQty) || rowQty <= 0) continue;
 
-        // Cari di inventory yang ada
         let matched = items.find(item => item.sku.toLowerCase() === rowSku.toLowerCase());
 
-        // LOGIKA: Auto-create jika SKU belum terdaftar
         if (!matched) {
           const autoItem: InventoryItem = {
             id: `AUTO-${Date.now()}-${Math.floor(Math.random()*1000)}`,
@@ -244,14 +249,12 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
     setPhotos(prev => prev.filter((_, i) => i !== index));
   };
 
-  // --- SAVE WITH SOFT VALIDATION ---
   const handleSaveAttempt = () => {
     if (cart.length === 0) {
       alert("Keranjang masih kosong!");
       return;
     }
 
-    // Cek Stok Negatif (Hanya untuk Keluar)
     if (!isIncoming) {
       const hasNegativeStock = cart.some(ci => {
         const originalItem = items.find(i => i.id === ci.itemId);
@@ -305,7 +308,6 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
         onClose={() => setShowSuccessToast(false)} 
       />
 
-      {/* MODAL KONFIRMASI STOK NEGATIF */}
       {showNegativeConfirm && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[100] p-4">
            <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl max-w-md w-full p-6 animate-scale-in border border-slate-200 dark:border-slate-800">
@@ -320,18 +322,8 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
                 Apakah Anda yakin ingin tetap memproses transaksi ini?
               </p>
               <div className="flex gap-3">
-                 <button 
-                   onClick={() => setShowNegativeConfirm(false)}
-                   className="flex-1 py-3 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-xl font-bold hover:bg-slate-200 transition-colors"
-                 >
-                   Batal
-                 </button>
-                 <button 
-                   onClick={executeSave}
-                   className="flex-1 py-3 bg-orange-600 text-white rounded-xl font-bold hover:bg-orange-700 shadow-lg shadow-orange-200 dark:shadow-none transition-all active:scale-95"
-                 >
-                   Ya, Lanjutkan
-                 </button>
+                 <button onClick={() => setShowNegativeConfirm(false)} className="flex-1 py-3 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-xl font-bold hover:bg-slate-200 transition-colors">Batal</button>
+                 <button onClick={executeSave} className="flex-1 py-3 bg-orange-600 text-white rounded-xl font-bold hover:bg-orange-700 shadow-lg shadow-orange-200 dark:shadow-none transition-all active:scale-95">Ya, Lanjutkan</button>
               </div>
            </div>
         </div>
@@ -348,7 +340,6 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
-        
         <div className="xl:col-span-4 space-y-6">
            <div className="bg-white dark:bg-slate-900 p-6 rounded-xl shadow-sm border border-slate-100 dark:border-slate-800">
               <h3 className="text-sm font-bold uppercase tracking-wider text-slate-500 mb-4 flex items-center gap-2">
@@ -363,48 +354,25 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
 
                 <div>
                   <label className="block text-xs font-bold text-slate-500 mb-1">Tanggal</label>
-                  <input 
-                    type="date" 
-                    value={date} 
-                    onChange={e => setDate(e.target.value)}
-                    className="w-full border border-slate-300 dark:border-slate-700 dark:bg-slate-800 rounded-lg p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500/20" 
-                  />
+                  <input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full border border-slate-300 dark:border-slate-700 dark:bg-slate-800 rounded-lg p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500/20" />
                 </div>
 
                 {isIncoming && (
                   <>
                     <div>
                       <label className="block text-xs font-bold text-slate-500 mb-1">No. Surat Jalan / Ref</label>
-                      <input 
-                        type="text" 
-                        value={referenceNumber}
-                        onChange={e => setReferenceNumber(e.target.value)}
-                        placeholder="Contoh: SJ-001"
-                        className="w-full border border-slate-300 dark:border-slate-700 dark:bg-slate-800 rounded-lg p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500/20" 
-                      />
+                      <input type="text" value={referenceNumber} onChange={e => setReferenceNumber(e.target.value)} placeholder="Contoh: SJ-001" className="w-full border border-slate-300 dark:border-slate-700 dark:bg-slate-800 rounded-lg p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500/20" />
                     </div>
                     <div>
                       <label className="block text-xs font-bold text-slate-500 mb-1">Supplier</label>
-                      <input 
-                        type="text" 
-                        value={supplier}
-                        onChange={e => setSupplier(e.target.value)}
-                        placeholder="Nama Supplier"
-                        className="w-full border border-slate-300 dark:border-slate-700 dark:bg-slate-800 rounded-lg p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500/20" 
-                      />
+                      <input type="text" value={supplier} onChange={e => setSupplier(e.target.value)} placeholder="Nama Supplier" className="w-full border border-slate-300 dark:border-slate-700 dark:bg-slate-800 rounded-lg p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500/20" />
                     </div>
                   </>
                 )}
 
                 <div>
                   <label className="block text-xs font-bold text-slate-500 mb-1">Keterangan</label>
-                  <textarea 
-                    rows={2}
-                    value={notes}
-                    onChange={e => setNotes(e.target.value)}
-                    placeholder="Opsional..."
-                    className="w-full border border-slate-300 dark:border-slate-700 dark:bg-slate-800 rounded-lg p-2 text-sm outline-none resize-none focus:ring-2 focus:ring-blue-500/20" 
-                  />
+                  <textarea rows={2} value={notes} onChange={e => setNotes(e.target.value)} placeholder="Opsional..." className="w-full border border-slate-300 dark:border-slate-700 dark:bg-slate-800 rounded-lg p-2 text-sm outline-none resize-none focus:ring-2 focus:ring-blue-500/20" />
                 </div>
 
                 <div>
@@ -436,11 +404,10 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
                     <span className="text-[10px] bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded text-slate-400 font-normal">Fast Entry Active</span>
                  </h3>
                  <div className="flex gap-2">
-                    <button 
-                      onClick={() => bulkFileRef.current?.click()}
-                      disabled={isBulkImporting}
-                      className="flex items-center gap-1.5 px-3 py-1.5 bg-green-50 text-green-700 border border-green-200 rounded-lg text-xs font-bold hover:bg-green-100 transition-colors"
-                    >
+                    <button onClick={handleDownloadTemplate} className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg text-xs font-bold hover:bg-blue-100 transition-colors">
+                       <Download size={14} /> Template
+                    </button>
+                    <button onClick={() => bulkFileRef.current?.click()} disabled={isBulkImporting} className="flex items-center gap-1.5 px-3 py-1.5 bg-green-50 text-green-700 border border-green-200 rounded-lg text-xs font-bold hover:bg-green-100 transition-colors">
                        {isBulkImporting ? <Loader2 size={14} className="animate-spin" /> : <FileSpreadsheet size={14} />}
                        Bulk Import
                     </button>
@@ -473,11 +440,7 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
                        {showAutocomplete && searchQuery && !selectedItem && filteredItems.length > 0 && (
                          <div className="absolute z-20 w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-2xl mt-1 overflow-hidden animate-scale-in">
                             {filteredItems.map((item, idx) => (
-                              <div 
-                                key={item.id}
-                                onClick={() => selectItem(item)}
-                                className={`p-3 text-sm cursor-pointer border-b dark:border-slate-700 last:border-0 transition-colors flex justify-between items-center ${idx === highlightedIndex ? 'bg-blue-600 text-white' : 'hover:bg-slate-50 dark:hover:bg-slate-700'}`}
-                              >
+                              <div key={item.id} onClick={() => selectItem(item)} className={`p-3 text-sm cursor-pointer border-b dark:border-slate-700 last:border-0 transition-colors flex justify-between items-center ${idx === highlightedIndex ? 'bg-blue-600 text-white' : 'hover:bg-slate-50 dark:hover:bg-slate-700'}`}>
                                 <div>
                                   <div className="font-bold">{item.name}</div>
                                   <div className={`text-[10px] ${idx === highlightedIndex ? 'text-blue-100' : 'text-slate-400'}`}>{item.sku}</div>
@@ -498,26 +461,12 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
 
                     <div className="md:col-span-3">
                        <label className="block text-[10px] font-bold text-slate-400 mb-1 uppercase tracking-tighter">2. Qty</label>
-                       <input 
-                         ref={qtyInputRef}
-                         type="text"
-                         inputMode="numeric"
-                         value={inputQty}
-                         onChange={e => setInputQty(e.target.value.replace(/[^0-9.]/g, ''))}
-                         onKeyDown={handleKeyDownQty}
-                         placeholder="0"
-                         className="w-full border dark:border-slate-700 dark:bg-slate-900 rounded-lg p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500/40 font-bold"
-                       />
+                       <input ref={qtyInputRef} type="text" inputMode="numeric" value={inputQty} onChange={e => setInputQty(e.target.value.replace(/[^0-9.]/g, ''))} onKeyDown={handleKeyDownQty} placeholder="0" className="w-full border dark:border-slate-700 dark:bg-slate-900 rounded-lg p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500/40 font-bold" />
                     </div>
 
                     <div className="md:col-span-3">
                        <label className="block text-[10px] font-bold text-slate-400 mb-1 uppercase tracking-tighter">3. Satuan</label>
-                       <select 
-                         value={inputUnit}
-                         onChange={e => setInputUnit(e.target.value)}
-                         disabled={!selectedItem}
-                         className="w-full border dark:border-slate-700 dark:bg-slate-900 rounded-lg p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500/40 bg-white"
-                       >
+                       <select value={inputUnit} onChange={e => setInputUnit(e.target.value)} disabled={!selectedItem} className="w-full border dark:border-slate-700 dark:bg-slate-900 rounded-lg p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500/40 bg-white">
                          {selectedItem ? (
                            <>
                              <option value={selectedItem.unit}>{selectedItem.unit}</option>
@@ -567,11 +516,7 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
                  <div className="text-xs text-slate-500">
                     Total Item: <span className="font-bold text-slate-800 dark:text-slate-200">{cart.length}</span>
                  </div>
-                 <button 
-                   onClick={handleSaveAttempt}
-                   disabled={isSaving || cart.length === 0}
-                   className={`flex items-center gap-2 px-8 py-3 rounded-xl text-white font-bold shadow-lg transition-all active:scale-95 ${isIncoming ? 'bg-green-600 hover:bg-green-700' : 'bg-orange-600 hover:bg-orange-700'} disabled:opacity-50`}
-                 >
+                 <button onClick={handleSaveAttempt} disabled={isSaving || cart.length === 0} className={`flex items-center gap-2 px-8 py-3 rounded-xl text-white font-bold shadow-lg transition-all active:scale-95 ${isIncoming ? 'bg-green-600 hover:bg-green-700' : 'bg-orange-600 hover:bg-orange-700'} disabled:opacity-50`}>
                    {isSaving ? <Loader2 size={20} className="animate-spin" /> : <Save size={20} />}
                    {isSaving ? 'Menyimpan...' : 'Simpan Transaksi'}
                  </button>
@@ -583,7 +528,6 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
   );
 };
 
-// UI Icon used in empty state
 const ShoppingCart = ({ size, className }: { size: number, className?: string }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
     <circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/>

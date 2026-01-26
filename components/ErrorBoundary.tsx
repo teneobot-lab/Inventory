@@ -1,9 +1,10 @@
 
-import React, { ErrorInfo, ReactNode } from 'react';
+import React, { Component, ErrorInfo, ReactNode } from 'react';
 import { AlertTriangle, RefreshCw, Home, Copy } from 'lucide-react';
 
 interface Props {
-  children: ReactNode;
+  // Fix: children made optional to resolve "Property 'children' is missing" error in index.tsx
+  children?: ReactNode;
 }
 
 interface State {
@@ -14,11 +15,9 @@ interface State {
 
 /**
  * ErrorBoundary class component to catch rendering errors in the component tree.
- * Using React.Component and explicit constructor to resolve issues with property 
- * access and setState method identification in some TypeScript environments.
  */
-export class ErrorBoundary extends React.Component<Props, State> {
-  // Fix: Explicit constructor ensures base class is initialized with props correctly
+export class ErrorBoundary extends Component<Props, State> {
+  // Fix: Explicit constructor and state initialization to resolve property 'state' does not exist
   constructor(props: Props) {
     super(props);
     this.state = {
@@ -33,11 +32,10 @@ export class ErrorBoundary extends React.Component<Props, State> {
     return { hasError: true, error, errorInfo: null };
   }
 
-  // Fix: Properly call setState from the inherited React.Component class
+  // Fix: Properly call setState from the inherited Component class
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     // You can also log the error to an error reporting service
     console.error("Uncaught error:", error, errorInfo);
-    // Properly call setState from the inherited Component class
     this.setState({ errorInfo });
   }
 
@@ -56,7 +54,7 @@ export class ErrorBoundary extends React.Component<Props, State> {
     }
   };
 
-  // Fix: Correctly access this.props in the render method to resolve "Property 'props' does not exist" error
+  // Fix: Correctly access this.props and this.state through class inheritance
   public render() {
     if (this.state.hasError) {
       return (
@@ -109,7 +107,6 @@ export class ErrorBoundary extends React.Component<Props, State> {
       );
     }
 
-    // Standard Component this.props access
     return this.props.children;
   }
 }
