@@ -523,7 +523,6 @@ const App: React.FC = () => {
                 onUpdateTransaction={handleUpdateTransaction}
                 initialData={editingTransaction?.type === 'IN' ? editingTransaction : null}
                 onCancelEdit={() => setEditingTransaction(null)}
-                performerName={currentUser?.name}
               />
             )}
 
@@ -536,7 +535,6 @@ const App: React.FC = () => {
                 onUpdateTransaction={handleUpdateTransaction}
                 initialData={editingTransaction?.type === 'OUT' ? editingTransaction : null}
                 onCancelEdit={() => setEditingTransaction(null)}
-                performerName={currentUser?.name}
               />
             )}
 

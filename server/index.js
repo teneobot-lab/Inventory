@@ -38,7 +38,14 @@ const toCamel = (o) => {
     return newO;
 };
 
-// --- HEALTH CHECK ---
+// --- DEBUG & HEALTH CHECK ENDPOINTS ---
+
+// 1. Root Check (untuk cek apakah server jalan via browser)
+app.get('/', (req, res) => {
+    res.send('Inventory Backend is Running! Access API at /api');
+});
+
+// 2. Health Check (untuk cek koneksi DB dari Frontend)
 app.get('/api/health', async (req, res) => {
     try {
         const connection = await pool.getConnection();
@@ -46,12 +53,14 @@ app.get('/api/health', async (req, res) => {
         connection.release();
         res.json({ status: 'online', db: 'connected' });
     } catch (err) {
+        console.error("Health Check Error:", err);
         res.status(500).json({ status: 'error', db: 'disconnected', error: err.message });
     }
 });
 
-// --- AUTH ---
+// --- AUTHENTICATION ---
 app.post('/api/login', async (req, res) => {
+    console.log("Login Attempt:", req.body.username); // Log login attempts
     const { username, password } = req.body;
     try {
         const [rows] = await pool.query(
@@ -59,16 +68,19 @@ app.post('/api/login', async (req, res) => {
             [username, password]
         );
         if (rows.length > 0) {
+            console.log("Login Success:", username);
             res.json({ success: true, user: toCamel(rows[0]) });
         } else {
+            console.log("Login Failed: Invalid Credentials");
             res.status(401).json({ success: false, message: 'Invalid credentials' });
         }
     } catch (err) {
+        console.error("Login DB Error:", err);
         res.status(500).json({ error: err.message });
     }
 });
 
-// --- INVENTORY ---
+// --- INVENTORY API ---
 app.get('/api/inventory', async (req, res) => {
     try {
         const [rows] = await pool.query('SELECT * FROM inventory ORDER BY name ASC');
@@ -107,7 +119,7 @@ app.delete('/api/inventory/:id', async (req, res) => {
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// --- TRANSACTIONS ---
+// --- TRANSACTION API ---
 app.get('/api/transactions', async (req, res) => {
     try {
         const [rows] = await pool.query('SELECT * FROM transactions ORDER BY date DESC');
@@ -121,16 +133,13 @@ app.post('/api/transactions', async (req, res) => {
     try {
         await connection.beginTransaction();
         
-        console.log(`Processing ${tx.type} Transaction: ${tx.id}`);
-
         const sqlTx = `INSERT INTO transactions (id, type, date, reference_number, supplier, notes, photos, items, performer) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`;
         await connection.query(sqlTx, [
             tx.id, tx.type, new Date(tx.date), tx.referenceNumber, tx.supplier, tx.notes, 
             JSON.stringify(tx.photos || []), JSON.stringify(tx.items || []), tx.performer
         ]);
 
-        const items = Array.isArray(tx.items) ? tx.items : [];
-        for (const item of items) {
+        for (const item of tx.items) {
             let updateSql = '';
             if (tx.type === 'IN') {
                 updateSql = 'UPDATE inventory SET stock = stock + ? WHERE id = ?';
@@ -141,12 +150,11 @@ app.post('/api/transactions', async (req, res) => {
         }
 
         await connection.commit();
-        console.log(`Transaction ${tx.id} committed successfully.`);
         res.json({ success: true });
     } catch (err) {
         await connection.rollback();
-        console.error("DB TRANSACTION ERROR:", err);
-        res.status(500).json({ success: false, error: err.message });
+        console.error(err);
+        res.status(500).json({ error: err.message });
     } finally {
         connection.release();
     }
@@ -164,7 +172,7 @@ app.put('/api/transactions/:id', async (req, res) => {
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// --- REJECT ---
+// --- REJECT MODULE API ---
 app.get('/api/reject-master', async (req, res) => {
     try {
         const [rows] = await pool.query('SELECT * FROM reject_master');
@@ -208,7 +216,7 @@ app.post('/api/reject-transactions', async (req, res) => {
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// --- USERS ---
+// --- USER MANAGEMENT API ---
 app.get('/api/users', async (req, res) => {
     try {
         const [rows] = await pool.query('SELECT * FROM users');
