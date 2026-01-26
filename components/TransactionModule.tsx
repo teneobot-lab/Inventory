@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { InventoryItem, Transaction, TransactionType, TransactionItem } from '../types';
-import { ArrowDownLeft, ArrowUpRight, Calendar, Search, Save, Trash2, Upload, Loader2, Image as ImageIcon, X, CheckCircle2, FileSpreadsheet, AlertTriangle, Download } from 'lucide-center';
+import { ArrowDownLeft, ArrowUpRight, Calendar, Search, Save, Trash2, Upload, Loader2, Image as ImageIcon, X, CheckCircle2, FileSpreadsheet, AlertTriangle, Download } from 'lucide-react';
 import { Toast } from './Toast';
 import * as XLSX from 'xlsx';
 

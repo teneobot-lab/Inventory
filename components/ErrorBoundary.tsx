@@ -16,7 +16,8 @@ interface State {
 /**
  * ErrorBoundary class component to catch rendering errors in the component tree.
  */
-export class ErrorBoundary extends Component<Props, State> {
+// Fix: Explicitly extending React.Component to ensure TypeScript recognizes inherited properties like state, setState, and props
+export class ErrorBoundary extends React.Component<Props, State> {
   // Fix: Explicit constructor and state initialization to resolve property 'state' does not exist
   constructor(props: Props) {
     super(props);
@@ -27,12 +28,13 @@ export class ErrorBoundary extends Component<Props, State> {
     };
   }
 
+  // Fix: Properly implement static method for state derivation from error
   public static getDerivedStateFromError(error: Error): State {
     // Update state so the next render will show the fallback UI.
     return { hasError: true, error, errorInfo: null };
   }
 
-  // Fix: Properly call setState from the inherited Component class
+  // Fix: Properly call setState from the inherited Component class and handle lifecycle
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     // You can also log the error to an error reporting service
     console.error("Uncaught error:", error, errorInfo);
@@ -48,13 +50,14 @@ export class ErrorBoundary extends Component<Props, State> {
   };
 
   private handleCopyError = () => {
+    // Fix: Correctly access this.state to retrieve error information
     if (this.state.error) {
         navigator.clipboard.writeText(`${this.state.error.toString()}\n${this.state.errorInfo?.componentStack}`);
         alert("Error log copied to clipboard.");
     }
   };
 
-  // Fix: Correctly access this.props and this.state through class inheritance
+  // Fix: Correctly access this.props and this.state through class inheritance in the render method
   public render() {
     if (this.state.hasError) {
       return (
