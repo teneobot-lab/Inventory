@@ -12,6 +12,7 @@ interface TransactionModuleProps {
   onUpdateTransaction: (t: Transaction) => Promise<void> | void;
   initialData?: Transaction | null;
   onCancelEdit?: () => void;
+  performerName?: string;
 }
 
 export const TransactionModule: React.FC<TransactionModuleProps> = ({ 
@@ -21,7 +22,8 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
   onSaveTransaction, 
   onUpdateTransaction,
   initialData,
-  onCancelEdit
+  onCancelEdit,
+  performerName = 'System User'
 }) => {
   const isIncoming = type === 'IN';
   
@@ -149,7 +151,7 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
       notes,
       photos,
       items: cart,
-      performer: 'Current User'
+      performer: performerName
     };
 
     try {

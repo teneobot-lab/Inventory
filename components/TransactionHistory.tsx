@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Transaction } from '../types';
-import { Search, Filter, ArrowDownLeft, ArrowUpRight, Edit, Eye } from 'lucide-react';
+import { Search, Filter, ArrowDownLeft, ArrowUpRight, Edit } from 'lucide-react';
 
 interface TransactionHistoryProps {
   transactions: Transaction[];
@@ -11,17 +11,20 @@ export const TransactionHistory: React.FC<TransactionHistoryProps> = ({ transact
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState<'ALL' | 'IN' | 'OUT'>('ALL');
 
-  const filteredTransactions = transactions.filter(t => {
-    const matchesSearch = 
-      t.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (t.referenceNumber || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (t.supplier || '').toLowerCase().includes(searchTerm.toLowerCase()) || // Include supplier in search
-      t.notes.toLowerCase().includes(searchTerm.toLowerCase());
-    
-    const matchesType = filterType === 'ALL' || t.type === filterType;
+  const filteredTransactions = transactions
+    .filter(t => {
+      const matchesSearch = 
+        t.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (t.referenceNumber || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (t.supplier || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        t.notes.toLowerCase().includes(searchTerm.toLowerCase());
+      
+      const matchesType = filterType === 'ALL' || t.type === filterType;
 
-    return matchesSearch && matchesType;
-  }).reverse(); // Show newest first
+      return matchesSearch && matchesType;
+    })
+    // Sort explicitly by date DESC (newest first)
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
   return (
     <div className="space-y-6 animate-fade-in">
