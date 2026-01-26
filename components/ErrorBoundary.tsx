@@ -1,5 +1,5 @@
 
-import React, { Component, ErrorInfo, ReactNode } from 'react';
+import React, { ErrorInfo, ReactNode } from 'react';
 import { AlertTriangle, RefreshCw, Home, Copy } from 'lucide-react';
 
 interface Props {
@@ -12,8 +12,12 @@ interface State {
   errorInfo: ErrorInfo | null;
 }
 
-// Fixed: Explicitly importing Component and extending it to ensure this.setState and this.props are recognized by the compiler
-export class ErrorBoundary extends Component<Props, State> {
+/**
+ * ErrorBoundary class component to catch rendering errors in the component tree.
+ * Explicitly extending React.Component resolves issues where TypeScript might not
+ * correctly infer inheritance of setState and props from the Component named import.
+ */
+export class ErrorBoundary extends React.Component<Props, State> {
   public state: State = {
     hasError: false,
     error: null,
@@ -25,10 +29,11 @@ export class ErrorBoundary extends Component<Props, State> {
     return { hasError: true, error, errorInfo: null };
   }
 
-  // Fixed: componentDidCatch now has proper access to this.setState
+  // Handle errors caught during rendering
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     // You can also log the error to an error reporting service
     console.error("Uncaught error:", error, errorInfo);
+    // Fix: Using this.setState correctly within a class extending React.Component
     this.setState({ errorInfo });
   }
 
@@ -47,7 +52,7 @@ export class ErrorBoundary extends Component<Props, State> {
     }
   };
 
-  // Fixed: render now has proper access to this.props.children
+  // Render method returns children or an error fallback UI
   public render() {
     if (this.state.hasError) {
       return (
@@ -100,6 +105,7 @@ export class ErrorBoundary extends Component<Props, State> {
       );
     }
 
+    // Fix: Standard React.Component this.props.children access
     return this.props.children;
   }
 }

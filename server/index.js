@@ -25,8 +25,8 @@ const pool = mysql.createPool({
 });
 
 /**
- * Senior Utility: Robust Snake to Camel mapping.
- * FIXED: Properly checks if value is a string before calling .trim()
+ * Robust Snake to Camel mapping.
+ * Menangani kolom JSON (conversions, items, photos) agar tidak double-parse.
  */
 const toCamel = (o) => {
     if (!o || typeof o !== 'object') return o;
@@ -36,11 +36,9 @@ const toCamel = (o) => {
         const newKey = key.replace(/_([a-z])/g, (g) => g[1].toUpperCase());
         let value = o[key];
 
-        // List of JSON-encoded columns
         const jsonFields = ['conversions', 'items', 'photos'];
         
         if (jsonFields.includes(newKey) || jsonFields.includes(key)) {
-            // Only attempt to parse if it's a non-null string
             if (typeof value === 'string') {
                 const trimmed = value.trim();
                 if (trimmed.startsWith('[') || trimmed.startsWith('{')) {
@@ -54,7 +52,6 @@ const toCamel = (o) => {
             } else if (value === null) {
                 value = [];
             }
-            // If value is already an object/array, mysql2 has already parsed it for us.
         }
 
         newO[newKey] = value;
@@ -75,7 +72,7 @@ app.get('/api/health', async (req, res) => {
     }
 });
 
-// --- AUTH ---
+// --- AUTH & USERS ---
 app.post('/api/login', async (req, res) => {
     const { username, password } = req.body;
     try {
@@ -93,6 +90,24 @@ app.post('/api/login', async (req, res) => {
     }
 });
 
+app.get('/api/users', async (req, res) => {
+    try {
+        const [rows] = await pool.query('SELECT * FROM users ORDER BY name ASC');
+        res.json(rows.map(toCamel));
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/users', async (req, res) => {
+    const u = req.body;
+    try {
+        await pool.query(
+            'INSERT INTO users (id, name, username, password, role, email) VALUES (?, ?, ?, ?, ?, ?)',
+            [u.id, u.name, u.username, u.password, u.role, u.email]
+        );
+        res.json({ success: true });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // --- INVENTORY ---
 app.get('/api/inventory', async (req, res) => {
     try {
@@ -104,7 +119,9 @@ app.get('/api/inventory', async (req, res) => {
 app.post('/api/inventory', async (req, res) => {
     const item = req.body;
     try {
-        const sql = `INSERT INTO inventory (id, name, sku, category, stock, min_stock, unit, conversions, price, last_updated) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+        const sql = `INSERT INTO inventory (id, name, sku, category, stock, min_stock, unit, conversions, price, last_updated) 
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) 
+                     ON DUPLICATE KEY UPDATE name=VALUES(name), sku=VALUES(sku), category=VALUES(category), stock=VALUES(stock), min_stock=VALUES(min_stock), unit=VALUES(unit), conversions=VALUES(conversions), price=VALUES(price), last_updated=VALUES(last_updated)`;
         await pool.query(sql, [
             item.id, item.name, item.sku, item.category, item.stock, item.minStock, item.unit, 
             JSON.stringify(item.conversions || []), item.price, new Date()
@@ -113,19 +130,23 @@ app.post('/api/inventory', async (req, res) => {
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// --- TRANSACTIONS (FIXED FOR SORT MEMORY ERROR) ---
+app.delete('/api/inventory/:id', async (req, res) => {
+    try {
+        await pool.query('DELETE FROM inventory WHERE id = ?', [req.params.id]);
+        res.json({ success: true });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// --- TRANSACTIONS ---
 app.get('/api/transactions', async (req, res) => {
     let connection;
     try {
         connection = await pool.getConnection();
-        
-        // Fix for ER_OUT_OF_SORTMEMORY: Increase buffer size for this session
-        await connection.query('SET SESSION sort_buffer_size = 1048576 * 4'); // 4MB
-        
+        await connection.query('SET SESSION sort_buffer_size = 1048576 * 4'); // Fix Sort Memory
         const [rows] = await connection.query('SELECT * FROM transactions ORDER BY date DESC, id DESC');
         res.json(rows.map(toCamel));
     } catch (err) { 
-        console.error("GET TRANSACTIONS FATAL ERROR:", err);
+        console.error("GET TRANSACTIONS ERROR:", err);
         res.status(500).json({ success: false, error: err.message }); 
     } finally {
         if (connection) connection.release();
@@ -155,6 +176,7 @@ app.post('/api/transactions', async (req, res) => {
         res.json({ success: true });
     } catch (err) {
         await connection.rollback();
+        console.error("POST TRANSACTION ERROR:", err);
         res.status(500).json({ success: false, error: err.message });
     } finally {
         connection.release();
@@ -183,12 +205,54 @@ app.delete('/api/transactions/:id', async (req, res) => {
     } finally { connection.release(); }
 });
 
-// Users
-app.get('/api/users', async (req, res) => {
+// --- REJECT MODULE (MISSING ROUTES FIXED) ---
+
+// 1. Master Data Reject
+app.get('/api/reject/master', async (req, res) => {
     try {
-        const [rows] = await pool.query('SELECT * FROM users');
+        const [rows] = await pool.query('SELECT * FROM reject_master ORDER BY name ASC');
         res.json(rows.map(toCamel));
     } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/reject/master', async (req, res) => {
+    const item = req.body;
+    try {
+        const sql = `INSERT INTO reject_master (id, name, sku, category, base_unit, conversions) VALUES (?, ?, ?, ?, ?, ?)`;
+        await pool.query(sql, [
+            item.id, item.name, item.sku, item.category, item.baseUnit, JSON.stringify(item.conversions || [])
+        ]);
+        res.json({ success: true });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.delete('/api/reject/master/:id', async (req, res) => {
+    try {
+        await pool.query('DELETE FROM reject_master WHERE id = ?', [req.params.id]);
+        res.json({ success: true });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// 2. Transaksi Reject
+app.get('/api/reject/transactions', async (req, res) => {
+    try {
+        const [rows] = await pool.query('SELECT * FROM reject_transactions ORDER BY date DESC, id DESC');
+        res.json(rows.map(toCamel));
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/reject/transactions', async (req, res) => {
+    const tx = req.body;
+    try {
+        const sql = `INSERT INTO reject_transactions (id, date, items, created_at) VALUES (?, ?, ?, ?)`;
+        await pool.query(sql, [
+            tx.id, new Date(tx.date), JSON.stringify(tx.items || []), new Date()
+        ]);
+        res.json({ success: true });
+    } catch (err) { 
+        console.error("POST REJECT TRANSACTION ERROR:", err);
+        res.status(500).json({ error: err.message }); 
+    }
 });
 
 app.listen(PORT, () => {
