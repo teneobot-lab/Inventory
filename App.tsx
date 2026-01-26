@@ -147,7 +147,7 @@ const App: React.FC = () => {
 
   const handleAddItem = async (item: InventoryItem) => {
     await api.addInventory(item);
-    refreshData(); 
+    refreshData(); // Refresh all data to ensure sync
   };
 
   const handleUpdateItem = async (updatedItem: InventoryItem) => {
@@ -179,6 +179,7 @@ const App: React.FC = () => {
   };
 
   // Transaction Handlers
+  // Note: Backend handles stock adjustment, we just send transaction data
   const handleSaveTransaction = async (newTransaction: Transaction) => {
     await api.addTransaction(newTransaction);
     refreshData();
@@ -188,18 +189,6 @@ const App: React.FC = () => {
     await api.updateTransaction(updatedTransaction);
     setEditingTransaction(null);
     refreshData();
-  };
-
-  const handleDeleteTransaction = async (id: string) => {
-    if (confirm('Apakah Anda yakin ingin menghapus transaksi ini? Stok barang akan dikembalikan otomatis sesuai jenis transaksi.')) {
-      try {
-        await api.deleteTransaction(id);
-        refreshData();
-      } catch (err: any) {
-        console.error("Gagal menghapus transaksi", err);
-        alert(`Terjadi kesalahan saat menghapus transaksi: ${err.message}`);
-      }
-    }
   };
 
   const handleEditFromHistory = (t: Transaction) => {
@@ -251,6 +240,7 @@ const App: React.FC = () => {
 
   return (
     <div className={`flex h-screen bg-slate-50 dark:bg-slate-950 overflow-hidden relative transition-colors duration-300 ${isDarkMode ? 'dark' : ''}`}>
+      {/* Media Player Component - Controlled via props */}
       <MediaPlayer 
         isOpen={isMediaPlayerOpen} 
         onClose={() => setIsMediaPlayerOpen(false)} 
@@ -399,6 +389,7 @@ const App: React.FC = () => {
                 </div>
              </div>
 
+             {/* Media Player Toggle Button */}
              <button
                onClick={() => setIsMediaPlayerOpen(!isMediaPlayerOpen)}
                className={`p-2 rounded-full transition-all border ${
@@ -532,7 +523,6 @@ const App: React.FC = () => {
                 onUpdateTransaction={handleUpdateTransaction}
                 initialData={editingTransaction?.type === 'IN' ? editingTransaction : null}
                 onCancelEdit={() => setEditingTransaction(null)}
-                performerName={currentUser?.name}
               />
             )}
 
@@ -545,7 +535,6 @@ const App: React.FC = () => {
                 onUpdateTransaction={handleUpdateTransaction}
                 initialData={editingTransaction?.type === 'OUT' ? editingTransaction : null}
                 onCancelEdit={() => setEditingTransaction(null)}
-                performerName={currentUser?.name}
               />
             )}
 
@@ -553,7 +542,6 @@ const App: React.FC = () => {
               <TransactionHistory 
                 transactions={transactions} 
                 onEditTransaction={handleEditFromHistory} 
-                onDeleteTransaction={handleDeleteTransaction}
               />
             )}
 

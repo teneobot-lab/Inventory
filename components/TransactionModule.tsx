@@ -7,12 +7,11 @@ import { Toast } from './Toast';
 interface TransactionModuleProps {
   type: TransactionType;
   items: InventoryItem[];
-  onAddItem: (item: InventoryItem) => void; 
-  onSaveTransaction: (t: Transaction) => Promise<void>;
-  onUpdateTransaction: (t: Transaction) => Promise<void>;
+  onAddItem: (item: InventoryItem) => void; // New prop for Auto-Create
+  onSaveTransaction: (t: Transaction) => void;
+  onUpdateTransaction: (t: Transaction) => void;
   initialData?: Transaction | null;
   onCancelEdit?: () => void;
-  performerName?: string;
 }
 
 export const TransactionModule: React.FC<TransactionModuleProps> = ({ 
@@ -22,8 +21,7 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
   onSaveTransaction, 
   onUpdateTransaction,
   initialData,
-  onCancelEdit,
-  performerName = 'System User'
+  onCancelEdit
 }) => {
   const isIncoming = type === 'IN';
   
@@ -32,7 +30,7 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
   const [transactionId, setTransactionId] = useState('');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [referenceNumber, setReferenceNumber] = useState('');
-  const [supplier, setSupplier] = useState(''); 
+  const [supplier, setSupplier] = useState(''); // New State for Supplier
   const [notes, setNotes] = useState('');
   const [photos, setPhotos] = useState<string[]>([]);
   
@@ -63,17 +61,20 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
   const qtyInputRef = useRef<HTMLInputElement>(null);
 
   // -- Effects --
+  
+  // Handle Initial Data for Editing (from History)
   useEffect(() => {
     if (initialData) {
       setIsEditing(true);
       setTransactionId(initialData.id);
       setDate(initialData.date.split('T')[0]);
       setReferenceNumber(initialData.referenceNumber || '');
-      setSupplier(initialData.supplier || ''); 
+      setSupplier(initialData.supplier || ''); // Load supplier
       setNotes(initialData.notes);
       setPhotos(initialData.photos || []);
       setCart([...initialData.items]);
     } else {
+      // If no initial data (or switching menu), reset
       resetForm();
     }
   }, [initialData, type]);
@@ -83,7 +84,7 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
     setTransactionId(`TX-${Date.now()}-${Math.floor(Math.random()*1000)}`);
     setDate(new Date().toISOString().split('T')[0]);
     setReferenceNumber('');
-    setSupplier(''); 
+    setSupplier(''); // Reset supplier
     setNotes('');
     setPhotos([]);
     setCart([]);
@@ -111,12 +112,14 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
 
     setCart([...cart, newItem]);
     
+    // Reset Input fields for rapid entry
     setSelectedItem(null);
     setSearchQuery('');
     setInputQty('');
     setInputUnit('');
     setShowAutocomplete(false);
     
+    // Return Focus to Search
     setTimeout(() => searchInputRef.current?.focus(), 50);
   };
 
@@ -157,6 +160,7 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
     setTimeout(() => qtyInputRef.current?.focus(), 50);
   };
 
+  // -- XLSX Template Download --
   const handleDownloadTemplate = () => {
     const headers = ["SKU", "Nama Barang", "Qty", "Satuan"];
     const sample = ["NEW-001", "Contoh Barang Baru", 10, "pcs"];
@@ -166,6 +170,7 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
     XLSX.writeFile(wb, "template_transaksi.xlsx");
   };
 
+  // -- XLSX Import for Cart (with Auto Create) --
   const handleCartImport = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -182,6 +187,7 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
       const newCartItems: TransactionItem[] = [];
       let autoCreatedCount = 0;
       
+      // Skip header
       for (let i = 1; i < jsonData.length; i++) {
         const row = jsonData[i];
         if (!row || row.length < 2) continue;
@@ -195,6 +201,7 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
 
         let matchedItem = items.find(it => it.sku.toLowerCase() === sku.toLowerCase());
 
+        // AUTO CREATE LOGIC
         if (!matchedItem) {
             const newItem: InventoryItem = {
                 id: `AUTO-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
@@ -208,7 +215,7 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
                 lastUpdated: new Date().toISOString()
             };
             onAddItem(newItem);
-            matchedItem = newItem; 
+            matchedItem = newItem; // Use this new item
             autoCreatedCount++;
         }
         
@@ -234,6 +241,7 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
     reader.readAsArrayBuffer(file as Blob);
   };
 
+  // -- Photo Handling --
   const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
       const files = Array.from(e.target.files);
@@ -251,12 +259,14 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
     setPhotos(prev => prev.filter((_, i) => i !== index));
   };
 
-  const handleSave = async () => {
+  // -- Save Transaction --
+  const handleSave = () => {
     if (cart.length === 0) {
       alert("Keranjang kosong!");
       return;
     }
 
+    // SOFT VALIDATION (Stock < 0) for OUT Transactions
     if (type === 'OUT') {
         const warningItems: string[] = [];
         cart.forEach(cItem => {
@@ -279,6 +289,7 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
         }
     }
 
+    // Start Saving Process (Visual)
     setIsSaving(true);
 
     const transactionData: Transaction = {
@@ -286,38 +297,38 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
       type,
       date: new Date(date).toISOString(),
       referenceNumber: isIncoming ? referenceNumber : undefined,
-      supplier: isIncoming ? supplier : undefined, 
+      supplier: isIncoming ? supplier : undefined, // Save supplier only for IN
       notes,
       photos,
       items: cart,
-      performer: performerName
+      performer: 'Current User'
     };
 
-    try {
+    // Simulate Network Request Delay for smoother UX
+    setTimeout(() => {
         if (isEditing) {
-          await onUpdateTransaction(transactionData);
+          onUpdateTransaction(transactionData);
         } else {
-          await onSaveTransaction(transactionData);
+          onSaveTransaction(transactionData);
         }
         
         resetForm();
-        setShowSuccessToast(true);
-    } catch (err: any) {
-        console.error("Save failed:", err);
-        alert(`Gagal menyimpan transaksi: ${err.message || "Unknown error"}`);
-    } finally {
         setIsSaving(false);
-    }
+        setShowSuccessToast(true); // Trigger Toast
+    }, 800);
   };
 
   return (
     <div className="space-y-8 animate-fade-in relative">
+      
+      {/* TOAST COMPONENT */}
       <Toast 
         message="Transaksi berhasil disimpan ke database." 
         isVisible={showSuccessToast} 
         onClose={() => setShowSuccessToast(false)} 
       />
 
+      {/* HEADER: Title */}
       <div className="flex justify-between items-center">
         <h2 className={`text-2xl font-bold flex items-center gap-2 ${isIncoming ? 'text-green-600' : 'text-orange-600'}`}>
           {isIncoming ? <ArrowDownLeft size={28} /> : <ArrowUpRight size={28} />}
@@ -330,7 +341,10 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
         )}
       </div>
 
+      {/* MAIN FORM: Split Layout */}
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
+        
+        {/* LEFT PANEL: Detail Informasi */}
         <div className="xl:col-span-4 space-y-6">
            <div className="bg-white dark:bg-slate-900 p-6 rounded-xl shadow-sm border border-slate-100 dark:border-slate-800 h-full">
               <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-200 mb-4 flex items-center gap-2">
@@ -413,6 +427,7 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
            </div>
         </div>
 
+        {/* RIGHT PANEL: Keranjang Barang */}
         <div className="xl:col-span-8 space-y-6">
            <div className="bg-white dark:bg-slate-900 p-6 rounded-xl shadow-sm border border-slate-100 dark:border-slate-800 h-full flex flex-col">
               <div className="flex justify-between items-start mb-6">
@@ -430,9 +445,11 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
                  </div>
               </div>
 
+              {/* RAPID INPUT FORM */}
               <div className="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-lg border border-slate-200 dark:border-slate-700 mb-4">
                  <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
                     
+                    {/* Autocomplete Field */}
                     <div className="md:col-span-6 relative">
                        <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Cari Barang (SKU/Nama)</label>
                        <input 
@@ -442,7 +459,7 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
                          onChange={e => {
                            setSearchQuery(e.target.value);
                            setShowAutocomplete(true);
-                           setSelectedItem(null); 
+                           setSelectedItem(null); // Clear selection if typing
                          }}
                          onKeyDown={handleKeyDownSearch}
                          onFocus={() => setShowAutocomplete(true)}
@@ -451,6 +468,7 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
                        />
                        {selectedItem && <CheckCircle size={16} className="absolute right-3 top-9 text-green-600" />}
                        
+                       {/* Dropdown */}
                        {showAutocomplete && searchQuery && !selectedItem && (
                          <div className="absolute z-10 w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg mt-1 max-h-48 overflow-y-auto">
                             {filteredItems.length > 0 ? (
@@ -477,6 +495,7 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
                        )}
                     </div>
 
+                    {/* Qty Field */}
                     <div className="md:col-span-2">
                        <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Qty</label>
                        <input 
@@ -491,8 +510,10 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
                          className="w-full border border-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-white rounded-lg p-2.5 outline-none"
                          style={{ appearance: 'textfield' }} 
                        />
+                       <style>{`input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button {-webkit-appearance: none; margin: 0;}`}</style>
                     </div>
 
+                    {/* Unit Field */}
                     <div className="md:col-span-2">
                        <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Satuan</label>
                        <select 
@@ -514,6 +535,7 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
                        </select>
                     </div>
 
+                    {/* Add Button */}
                     <div className="md:col-span-2">
                        <button 
                          onClick={handleAddItem}
@@ -525,6 +547,7 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
                  </div>
               </div>
 
+              {/* CART TABLE */}
               <div className="flex-1 overflow-auto border rounded-lg border-slate-100 dark:border-slate-700">
                 <table className="w-full text-left text-sm text-slate-600 dark:text-slate-300">
                   <thead className="bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 uppercase text-xs sticky top-0">
@@ -568,6 +591,7 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
                    Total Item: <span className="font-bold text-slate-800 dark:text-white">{cart.length}</span>
                  </div>
                  
+                 {/* SAVE BUTTON WITH ANIMATION */}
                  <button 
                    onClick={handleSave}
                    disabled={isSaving || cart.length === 0}
