@@ -195,9 +195,9 @@ const App: React.FC = () => {
       try {
         await api.deleteTransaction(id);
         refreshData();
-      } catch (err) {
+      } catch (err: any) {
         console.error("Gagal menghapus transaksi", err);
-        alert("Terjadi kesalahan saat menghapus transaksi.");
+        alert(`Terjadi kesalahan saat menghapus transaksi: ${err.message}`);
       }
     }
   };
@@ -532,6 +532,7 @@ const App: React.FC = () => {
                 onUpdateTransaction={handleUpdateTransaction}
                 initialData={editingTransaction?.type === 'IN' ? editingTransaction : null}
                 onCancelEdit={() => setEditingTransaction(null)}
+                performerName={currentUser?.name}
               />
             )}
 
@@ -544,6 +545,7 @@ const App: React.FC = () => {
                 onUpdateTransaction={handleUpdateTransaction}
                 initialData={editingTransaction?.type === 'OUT' ? editingTransaction : null}
                 onCancelEdit={() => setEditingTransaction(null)}
+                performerName={currentUser?.name}
               />
             )}
 
