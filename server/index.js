@@ -23,27 +23,30 @@ const pool = mysql.createPool({
     queueLimit: 0
 });
 
+// Helper: Convert Database (snake_case) to Frontend (camelCase)
 const toCamel = (o) => {
     if (!o) return null;
     const newO = {};
     for (const key in o) {
         const newKey = key.replace(/_([a-z])/g, (g) => g[1].toUpperCase());
-        newO[newKey] = o[key];
-        if (['conversions', 'items', 'photos'].includes(newKey) && typeof o[key] === 'string') {
-             try { newO[newKey] = JSON.parse(o[key]); } catch(e) { newO[newKey] = []; }
-        } else if (['conversions', 'items', 'photos'].includes(newKey) && typeof o[key] === 'object') {
-             newO[newKey] = o[key];
+        let value = o[key];
+        
+        // Auto-parse JSON strings for specific fields
+        const jsonFields = ['conversions', 'items', 'photos'];
+        if (jsonFields.includes(key) && typeof value === 'string') {
+            try { 
+                value = JSON.parse(value); 
+            } catch(e) { 
+                console.error(`Error parsing JSON for field ${key}:`, e);
+                value = []; 
+            }
         }
+        newO[newKey] = value;
     }
     return newO;
 };
 
-// --- DEBUG & HEALTH CHECK ENDPOINTS ---
-
-app.get('/', (req, res) => {
-    res.send('Inventory Backend is Running! Access API at /api');
-});
-
+// --- HEALTH & STATUS ---
 app.get('/api/health', async (req, res) => {
     try {
         const connection = await pool.getConnection();
@@ -51,7 +54,6 @@ app.get('/api/health', async (req, res) => {
         connection.release();
         res.json({ status: 'online', db: 'connected' });
     } catch (err) {
-        console.error("Health Check Error:", err);
         res.status(500).json({ status: 'error', db: 'disconnected', error: err.message });
     }
 });
@@ -91,7 +93,10 @@ app.post('/api/inventory', async (req, res) => {
             JSON.stringify(item.conversions || []), item.price, new Date(item.lastUpdated)
         ]);
         res.json({ success: true });
-    } catch (err) { res.status(500).json({ error: err.message }); }
+    } catch (err) { 
+        console.error("Add Inventory Error:", err);
+        res.status(500).json({ error: err.message }); 
+    }
 });
 
 app.put('/api/inventory/:id', async (req, res) => {
@@ -113,7 +118,7 @@ app.delete('/api/inventory/:id', async (req, res) => {
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// --- TRANSACTION API ---
+// --- TRANSACTION API (WITH STOCK INTEGRITY) ---
 app.get('/api/transactions', async (req, res) => {
     try {
         const [rows] = await pool.query('SELECT * FROM transactions ORDER BY date DESC');
@@ -127,27 +132,37 @@ app.post('/api/transactions', async (req, res) => {
     try {
         await connection.beginTransaction();
         
+        console.log(`Processing Transaction: ${tx.id} Type: ${tx.type}`);
+
+        // 1. Insert Transaction Record
         const sqlTx = `INSERT INTO transactions (id, type, date, reference_number, supplier, notes, photos, items, performer) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`;
         await connection.query(sqlTx, [
             tx.id, tx.type, new Date(tx.date), tx.referenceNumber, tx.supplier, tx.notes, 
             JSON.stringify(tx.photos || []), JSON.stringify(tx.items || []), tx.performer
         ]);
 
-        for (const item of tx.items) {
+        // 2. Update Stock for each item
+        const items = Array.isArray(tx.items) ? tx.items : [];
+        for (const item of items) {
             let updateSql = '';
             if (tx.type === 'IN') {
                 updateSql = 'UPDATE inventory SET stock = stock + ? WHERE id = ?';
-            } else {
+            } else if (tx.type === 'OUT') {
                 updateSql = 'UPDATE inventory SET stock = stock - ? WHERE id = ?';
             }
-            await connection.query(updateSql, [item.quantity, item.itemId]);
+            
+            if (updateSql) {
+                await connection.query(updateSql, [item.quantity, item.itemId]);
+            }
         }
 
         await connection.commit();
+        console.log(`Transaction ${tx.id} saved successfully.`);
         res.json({ success: true });
     } catch (err) {
         await connection.rollback();
-        res.status(500).json({ error: err.message });
+        console.error("DATABASE TRANSACTION ERROR:", err);
+        res.status(500).json({ success: false, error: err.message });
     } finally {
         connection.release();
     }
@@ -170,7 +185,7 @@ app.delete('/api/transactions/:id', async (req, res) => {
     try {
         await connection.beginTransaction();
         
-        // 1. Dapatkan detail transaksi sebelum dihapus untuk melakukan pembalikan stok
+        // 1. Get transaction details to identify items for stock reversal
         const [rows] = await connection.query('SELECT * FROM transactions WHERE id = ?', [req.params.id]);
         if (rows.length === 0) {
             return res.status(404).json({ error: "Transaction not found" });
@@ -178,26 +193,31 @@ app.delete('/api/transactions/:id', async (req, res) => {
         
         const tx = toCamel(rows[0]);
         
-        // 2. Balikkan stok
-        for (const item of tx.items) {
+        // 2. Reverse Stock
+        const items = Array.isArray(tx.items) ? tx.items : [];
+        for (const item of items) {
             let revertSql = '';
             if (tx.type === 'IN') {
-                // Jika transaksi masuk dihapus, kurangi stok
+                // If 'IN' is deleted, decrease stock
                 revertSql = 'UPDATE inventory SET stock = stock - ? WHERE id = ?';
-            } else {
-                // Jika transaksi keluar dihapus, tambahkan kembali stok
+            } else if (tx.type === 'OUT') {
+                // If 'OUT' is deleted, increase stock
                 revertSql = 'UPDATE inventory SET stock = stock + ? WHERE id = ?';
             }
-            await connection.query(revertSql, [item.quantity, item.itemId]);
+            
+            if (revertSql) {
+                await connection.query(revertSql, [item.quantity, item.itemId]);
+            }
         }
         
-        // 3. Hapus transaksi dari database
+        // 3. Delete transaction record
         await connection.query('DELETE FROM transactions WHERE id = ?', [req.params.id]);
 
         await connection.commit();
         res.json({ success: true });
     } catch (err) {
         await connection.rollback();
+        console.error("DELETE Transaction Error:", err);
         res.status(500).json({ error: err.message });
     } finally {
         connection.release();
