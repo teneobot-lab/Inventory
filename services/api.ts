@@ -7,13 +7,21 @@ const headers = {
 };
 
 export const api = {
-  // Check Backend Status
+  // Check Backend Status with strict timeout to prevent UI hanging
   checkConnection: async (): Promise<boolean> => {
     try {
-      const res = await fetch(`${API_URL}/health`, { method: 'GET', signal: AbortSignal.timeout(3000) });
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 4000);
+      
+      const res = await fetch(`${API_URL}/health`, { 
+        method: 'GET', 
+        signal: controller.signal 
+      });
+      
+      clearTimeout(timeoutId);
       return res.ok;
     } catch (e) {
-      console.error("Server Check Failed:", e);
+      console.warn("Backend connectivity check failed. Operating in limited mode.");
       return false;
     }
   },
@@ -26,10 +34,11 @@ export const api = {
         headers,
         body: JSON.stringify({ username, password }),
       });
+      if (!res.ok) return null;
       const data = await res.json();
       return data.success ? data.user : null;
     } catch (e) {
-      console.error("Connection Error:", e);
+      console.error("Login request failed:", e);
       return null;
     }
   },
@@ -38,7 +47,7 @@ export const api = {
   getInventory: async (): Promise<InventoryItem[]> => {
     try {
         const res = await fetch(`${API_URL}/inventory`);
-        if(!res.ok) throw new Error("Failed to fetch inventory");
+        if(!res.ok) return [];
         return res.json();
     } catch (e) { console.error(e); return []; }
   },
@@ -59,9 +68,9 @@ export const api = {
   getTransactions: async (): Promise<Transaction[]> => {
     try {
         const res = await fetch(`${API_URL}/transactions`);
-        if(!res.ok) throw new Error("Failed to fetch transactions");
+        if(!res.ok) return [];
         return res.json();
-    } catch (e) { console.error(e); return []; }
+    } catch (e) { console.error("Fetch transactions error:", e); return []; }
   },
   addTransaction: async (tx: Transaction) => {
     const res = await fetch(`${API_URL}/transactions`, { method: 'POST', headers, body: JSON.stringify(tx) });
@@ -80,7 +89,7 @@ export const api = {
   getRejectMaster: async (): Promise<RejectItem[]> => {
     try {
         const res = await fetch(`${API_URL}/reject-master`);
-        if(!res.ok) throw new Error("Failed to fetch reject master");
+        if(!res.ok) return [];
         return res.json();
     } catch (e) { console.error(e); return []; }
   },
@@ -95,7 +104,7 @@ export const api = {
   getRejectTransactions: async (): Promise<RejectTransaction[]> => {
     try {
         const res = await fetch(`${API_URL}/reject-transactions`);
-        if(!res.ok) throw new Error("Failed to fetch reject transactions");
+        if(!res.ok) return [];
         return res.json();
     } catch (e) { console.error(e); return []; }
   },
@@ -108,7 +117,7 @@ export const api = {
   getUsers: async (): Promise<User[]> => {
     try {
         const res = await fetch(`${API_URL}/users`);
-        if(!res.ok) throw new Error("Failed to fetch users");
+        if(!res.ok) return [];
         return res.json();
     } catch (e) { console.error(e); return []; }
   },

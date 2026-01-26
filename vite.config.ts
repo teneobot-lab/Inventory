@@ -7,13 +7,14 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [react()],
     define: {
-      'process.env.API_KEY': JSON.stringify(env.API_KEY),
+      'process.env.API_KEY': JSON.stringify(env.API_KEY || ''),
+      // Prevent libraries checking for process.env from crashing
+      'process.env': {} 
     },
-    // Proxy configuration for local development
     server: {
       proxy: {
         '/api': {
-          target: 'http://localhost:3010', // Local backend
+          target: 'http://localhost:3010',
           changeOrigin: true,
           secure: false,
         }

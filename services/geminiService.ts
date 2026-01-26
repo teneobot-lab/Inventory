@@ -1,19 +1,28 @@
-
 import { GoogleGenAI } from "@google/genai";
 import { InventoryItem, Transaction } from "../types";
 
-// Always use const ai = new GoogleGenAI({apiKey: process.env.API_KEY});
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// Senior Tip: Always wrap env access in safety checks to prevent boot-time crashes
+const getApiKey = () => {
+  try {
+    return process.env.API_KEY || "";
+  } catch (e) {
+    return "";
+  }
+};
+
+const apiKey = getApiKey();
+const ai = apiKey ? new GoogleGenAI({ apiKey }) : null;
 
 export const generateInventoryInsights = async (
   items: InventoryItem[],
   transactions: Transaction[]
 ): Promise<string> => {
+  if (!ai) return "AI Assistant tidak tersedia karena API Key tidak ditemukan.";
+
   const inventorySummary = items.map(i => 
     `- ${i.name} (SKU: ${i.sku}): Stok ${i.stock} ${i.unit} (Min: ${i.minStock})`
   ).join('\n');
 
-  // Flatten for analysis
   const recentTransactions = transactions.slice(-10).flatMap(t => 
     t.items.map(item => 
       `- ${t.date.split('T')[0]}: ${t.type} ${item.quantity} ${item.unit} ${item.itemName} (${t.notes})`
@@ -40,12 +49,10 @@ export const generateInventoryInsights = async (
   `;
 
   try {
-    // When using generate content for text answers, use ai.models.generateContent.
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: prompt,
     });
-    // The GenerateContentResponse object features a text property (not a method).
     return response.text || "Tidak ada respons dari AI.";
   } catch (error) {
     console.error("Gemini API Error:", error);
