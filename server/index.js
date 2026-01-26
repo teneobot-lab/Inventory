@@ -21,12 +21,12 @@ const pool = mysql.createPool({
     waitForConnections: true,
     connectionLimit: 10,
     queueLimit: 0,
-    timezone: '+07:00' // Ensure consistent timezone
+    timezone: '+07:00'
 });
 
 /**
- * Senior Utility: Robust Snake to Camel mapping with safe JSON handling.
- * This version prevents double-parsing if the DB driver already returns objects.
+ * Senior Utility: Robust Snake to Camel mapping.
+ * FIXED: Properly checks if value is a string before calling .trim()
  */
 const toCamel = (o) => {
     if (!o || typeof o !== 'object') return o;
@@ -36,20 +36,25 @@ const toCamel = (o) => {
         const newKey = key.replace(/_([a-z])/g, (g) => g[1].toUpperCase());
         let value = o[key];
 
-        // Handle JSON Columns (conversions, items, photos)
+        // List of JSON-encoded columns
         const jsonFields = ['conversions', 'items', 'photos'];
+        
         if (jsonFields.includes(newKey) || jsonFields.includes(key)) {
-            if (typeof value === 'string' && value.trim().startsWith('[') || value?.trim()?.startsWith('{')) {
-                try {
-                    value = JSON.parse(value);
-                } catch (e) {
-                    console.error(`Failed to parse JSON for key ${key}:`, e.message);
-                    value = [];
+            // Only attempt to parse if it's a non-null string
+            if (typeof value === 'string') {
+                const trimmed = value.trim();
+                if (trimmed.startsWith('[') || trimmed.startsWith('{')) {
+                    try {
+                        value = JSON.parse(trimmed);
+                    } catch (e) {
+                        console.error(`JSON Parse Error for ${key}:`, e.message);
+                        value = [];
+                    }
                 }
             } else if (value === null) {
                 value = [];
             }
-            // If it's already an object (mysql2 auto-parse), we keep it as is
+            // If value is already an object/array, mysql2 has already parsed it for us.
         }
 
         newO[newKey] = value;
@@ -66,8 +71,7 @@ app.get('/api/health', async (req, res) => {
         connection.release();
         res.json({ status: 'online', db: 'connected' });
     } catch (err) {
-        console.error("Health Check Failed:", err.message);
-        res.status(500).json({ status: 'error', db: 'disconnected', error: err.message });
+        res.status(500).json({ status: 'error', error: err.message });
     }
 });
 
@@ -85,7 +89,6 @@ app.post('/api/login', async (req, res) => {
             res.status(401).json({ success: false, message: 'Invalid credentials' });
         }
     } catch (err) {
-        console.error("Login Error:", err);
         res.status(500).json({ error: err.message });
     }
 });
@@ -95,10 +98,7 @@ app.get('/api/inventory', async (req, res) => {
     try {
         const [rows] = await pool.query('SELECT * FROM inventory ORDER BY name ASC');
         res.json(rows.map(toCamel));
-    } catch (err) { 
-        console.error("Get Inventory Error:", err);
-        res.status(500).json({ error: err.message }); 
-    }
+    } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 app.post('/api/inventory', async (req, res) => {
@@ -110,29 +110,25 @@ app.post('/api/inventory', async (req, res) => {
             JSON.stringify(item.conversions || []), item.price, new Date()
         ]);
         res.json({ success: true });
-    } catch (err) { 
-        console.error("Add Inventory Error:", err);
-        res.status(500).json({ error: err.message }); 
-    }
+    } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// --- TRANSACTIONS (CRITICAL FIX FOR 500 ERROR) ---
+// --- TRANSACTIONS (FIXED FOR SORT MEMORY ERROR) ---
 app.get('/api/transactions', async (req, res) => {
+    let connection;
     try {
-        console.log("Fetching transactions from DB...");
-        const [rows] = await pool.query('SELECT * FROM transactions ORDER BY date DESC, id DESC');
-        console.log(`Found ${rows.length} transactions.`);
+        connection = await pool.getConnection();
         
-        // Transform and send
-        const mappedRows = rows.map(toCamel);
-        res.json(mappedRows);
+        // Fix for ER_OUT_OF_SORTMEMORY: Increase buffer size for this session
+        await connection.query('SET SESSION sort_buffer_size = 1048576 * 4'); // 4MB
+        
+        const [rows] = await connection.query('SELECT * FROM transactions ORDER BY date DESC, id DESC');
+        res.json(rows.map(toCamel));
     } catch (err) { 
-        console.error("FATAL ERROR GET TRANSACTIONS:", err);
-        res.status(500).json({ 
-            success: false, 
-            message: "Gagal mengambil data transaksi dari database.",
-            error: err.message 
-        }); 
+        console.error("GET TRANSACTIONS FATAL ERROR:", err);
+        res.status(500).json({ success: false, error: err.message }); 
+    } finally {
+        if (connection) connection.release();
     }
 });
 
@@ -141,9 +137,6 @@ app.post('/api/transactions', async (req, res) => {
     const connection = await pool.getConnection();
     try {
         await connection.beginTransaction();
-        
-        console.log(`Processing Transaction ${tx.id}...`);
-
         const sqlTx = `INSERT INTO transactions (id, type, date, reference_number, supplier, notes, photos, items, performer) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`;
         await connection.query(sqlTx, [
             tx.id, tx.type, new Date(tx.date), tx.referenceNumber || null, tx.supplier || null, tx.notes || '', 
@@ -155,7 +148,6 @@ app.post('/api/transactions', async (req, res) => {
             let updateSql = tx.type === 'IN' 
                 ? 'UPDATE inventory SET stock = stock + ? WHERE id = ?'
                 : 'UPDATE inventory SET stock = stock - ? WHERE id = ?';
-            
             await connection.query(updateSql, [item.quantity, item.itemId]);
         }
 
@@ -163,7 +155,6 @@ app.post('/api/transactions', async (req, res) => {
         res.json({ success: true });
     } catch (err) {
         await connection.rollback();
-        console.error("POST TRANSACTION ERROR:", err);
         res.status(500).json({ success: false, error: err.message });
     } finally {
         connection.release();
@@ -175,33 +166,24 @@ app.delete('/api/transactions/:id', async (req, res) => {
     try {
         await connection.beginTransaction();
         const [rows] = await connection.query('SELECT * FROM transactions WHERE id = ?', [req.params.id]);
-        if (rows.length === 0) {
-            connection.release();
-            return res.status(404).json({ error: "Transaksi tidak ditemukan" });
-        }
+        if (rows.length === 0) return res.status(404).json({ error: "Not found" });
         
         const tx = toCamel(rows[0]);
         const items = Array.isArray(tx.items) ? tx.items : [];
         for (const item of items) {
-            let revertSql = tx.type === 'IN'
-                ? 'UPDATE inventory SET stock = stock - ? WHERE id = ?'
-                : 'UPDATE inventory SET stock = stock + ? WHERE id = ?';
+            let revertSql = tx.type === 'IN' ? 'UPDATE inventory SET stock = stock - ? WHERE id = ?' : 'UPDATE inventory SET stock = stock + ? WHERE id = ?';
             await connection.query(revertSql, [item.quantity, item.itemId]);
         }
-
         await connection.query('DELETE FROM transactions WHERE id = ?', [req.params.id]);
         await connection.commit();
         res.json({ success: true });
     } catch (err) {
         await connection.rollback();
-        console.error("DELETE TRANSACTION ERROR:", err);
         res.status(500).json({ error: err.message });
-    } finally {
-        connection.release();
-    }
+    } finally { connection.release(); }
 });
 
-// --- USERS & REJECT (SIMPLIFIED FOR SPACE) ---
+// Users
 app.get('/api/users', async (req, res) => {
     try {
         const [rows] = await pool.query('SELECT * FROM users');
