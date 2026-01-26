@@ -69,6 +69,9 @@ export const api = {
   updateTransaction: async (tx: Transaction) => {
     await fetch(`${API_URL}/transactions/${tx.id}`, { method: 'PUT', headers, body: JSON.stringify(tx) });
   },
+  deleteTransaction: async (id: string) => {
+    await fetch(`${API_URL}/transactions/${id}`, { method: 'DELETE' });
+  },
 
   // Reject Module
   getRejectMaster: async (): Promise<RejectItem[]> => {

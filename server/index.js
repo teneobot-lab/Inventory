@@ -40,12 +40,10 @@ const toCamel = (o) => {
 
 // --- DEBUG & HEALTH CHECK ENDPOINTS ---
 
-// 1. Root Check (untuk cek apakah server jalan via browser)
 app.get('/', (req, res) => {
     res.send('Inventory Backend is Running! Access API at /api');
 });
 
-// 2. Health Check (untuk cek koneksi DB dari Frontend)
 app.get('/api/health', async (req, res) => {
     try {
         const connection = await pool.getConnection();
@@ -60,7 +58,6 @@ app.get('/api/health', async (req, res) => {
 
 // --- AUTHENTICATION ---
 app.post('/api/login', async (req, res) => {
-    console.log("Login Attempt:", req.body.username); // Log login attempts
     const { username, password } = req.body;
     try {
         const [rows] = await pool.query(
@@ -68,14 +65,11 @@ app.post('/api/login', async (req, res) => {
             [username, password]
         );
         if (rows.length > 0) {
-            console.log("Login Success:", username);
             res.json({ success: true, user: toCamel(rows[0]) });
         } else {
-            console.log("Login Failed: Invalid Credentials");
             res.status(401).json({ success: false, message: 'Invalid credentials' });
         }
     } catch (err) {
-        console.error("Login DB Error:", err);
         res.status(500).json({ error: err.message });
     }
 });
@@ -153,7 +147,6 @@ app.post('/api/transactions', async (req, res) => {
         res.json({ success: true });
     } catch (err) {
         await connection.rollback();
-        console.error(err);
         res.status(500).json({ error: err.message });
     } finally {
         connection.release();
@@ -170,6 +163,45 @@ app.put('/api/transactions/:id', async (req, res) => {
         ]);
         res.json({ success: true });
     } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.delete('/api/transactions/:id', async (req, res) => {
+    const connection = await pool.getConnection();
+    try {
+        await connection.beginTransaction();
+        
+        // 1. Dapatkan detail transaksi sebelum dihapus untuk melakukan pembalikan stok
+        const [rows] = await connection.query('SELECT * FROM transactions WHERE id = ?', [req.params.id]);
+        if (rows.length === 0) {
+            return res.status(404).json({ error: "Transaction not found" });
+        }
+        
+        const tx = toCamel(rows[0]);
+        
+        // 2. Balikkan stok
+        for (const item of tx.items) {
+            let revertSql = '';
+            if (tx.type === 'IN') {
+                // Jika transaksi masuk dihapus, kurangi stok
+                revertSql = 'UPDATE inventory SET stock = stock - ? WHERE id = ?';
+            } else {
+                // Jika transaksi keluar dihapus, tambahkan kembali stok
+                revertSql = 'UPDATE inventory SET stock = stock + ? WHERE id = ?';
+            }
+            await connection.query(revertSql, [item.quantity, item.itemId]);
+        }
+        
+        // 3. Hapus transaksi dari database
+        await connection.query('DELETE FROM transactions WHERE id = ?', [req.params.id]);
+
+        await connection.commit();
+        res.json({ success: true });
+    } catch (err) {
+        await connection.rollback();
+        res.status(500).json({ error: err.message });
+    } finally {
+        connection.release();
+    }
 });
 
 // --- REJECT MODULE API ---

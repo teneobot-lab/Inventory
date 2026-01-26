@@ -1,18 +1,14 @@
+
 import { GoogleGenAI } from "@google/genai";
 import { InventoryItem, Transaction } from "../types";
-
-const apiKey = process.env.API_KEY || '';
-
-// Safely initialize the client only if key exists
-const ai = apiKey ? new GoogleGenAI({ apiKey }) : null;
 
 export const generateInventoryInsights = async (
   items: InventoryItem[],
   transactions: Transaction[]
 ): Promise<string> => {
-  if (!ai) {
-    return "API Key Gemini tidak ditemukan. Harap konfigurasi API_KEY.";
-  }
+  // Fix: Create a new GoogleGenAI instance right before making an API call 
+  // to ensure it always uses the most up-to-date API key.
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
   const inventorySummary = items.map(i => 
     `- ${i.name} (SKU: ${i.sku}): Stok ${i.stock} ${i.unit} (Min: ${i.minStock})`
@@ -45,10 +41,13 @@ export const generateInventoryInsights = async (
   `;
 
   try {
+    // Fix: Use ai.models.generateContent with the correct model and prompt.
+    // Basic text tasks use 'gemini-3-flash-preview'.
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: prompt,
     });
+    // Fix: Access response.text as a property, not a method.
     return response.text || "Tidak ada respons dari AI.";
   } catch (error) {
     console.error("Gemini API Error:", error);
