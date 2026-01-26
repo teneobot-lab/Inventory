@@ -29,9 +29,10 @@ const toCamel = (o) => {
     for (const key in o) {
         const newKey = key.replace(/_([a-z])/g, (g) => g[1].toUpperCase());
         newO[newKey] = o[key];
+        // Handle JSON Columns
         if (['conversions', 'items', 'photos'].includes(newKey) && typeof o[key] === 'string') {
              try { newO[newKey] = JSON.parse(o[key]); } catch(e) { newO[newKey] = []; }
-        } else if (['conversions', 'items', 'photos'].includes(newKey) && typeof o[key] === 'object') {
+        } else if (['conversions', 'items', 'photos'].includes(newKey) && typeof o[key] === 'object' && o[key] !== null) {
              newO[newKey] = o[key];
         }
     }
@@ -110,7 +111,8 @@ app.delete('/api/inventory/:id', async (req, res) => {
 // --- TRANSACTIONS (FULL CRUD) ---
 app.get('/api/transactions', async (req, res) => {
     try {
-        const [rows] = await pool.query('SELECT * FROM transactions ORDER BY date DESC');
+        // Ensure newest is always first at DB level
+        const [rows] = await pool.query('SELECT * FROM transactions ORDER BY date DESC, id DESC');
         res.json(rows.map(toCamel));
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -121,6 +123,8 @@ app.post('/api/transactions', async (req, res) => {
     try {
         await connection.beginTransaction();
         
+        console.log(`Menyimpan Transaksi ${tx.id} [${tx.type}]...`);
+
         const sqlTx = `INSERT INTO transactions (id, type, date, reference_number, supplier, notes, photos, items, performer) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`;
         await connection.query(sqlTx, [
             tx.id, tx.type, new Date(tx.date), tx.referenceNumber, tx.supplier, tx.notes, 
@@ -139,11 +143,12 @@ app.post('/api/transactions', async (req, res) => {
         }
 
         await connection.commit();
+        console.log(`Transaksi ${tx.id} berhasil disimpan dan stok diperbarui.`);
         res.json({ success: true });
     } catch (err) {
         await connection.rollback();
-        console.error("TRANSACTION ERROR:", err);
-        res.status(500).json({ error: err.message });
+        console.error("TRANSACTION DB ERROR:", err);
+        res.status(500).json({ success: false, error: err.message });
     } finally {
         connection.release();
     }
@@ -166,7 +171,7 @@ app.delete('/api/transactions/:id', async (req, res) => {
     try {
         await connection.beginTransaction();
         
-        // 1. Ambil data transaksi lama untuk pengembalian stok (reversal)
+        // 1. Ambil data lama untuk Reversal Stok
         const [rows] = await connection.query('SELECT * FROM transactions WHERE id = ?', [req.params.id]);
         if (rows.length === 0) {
             connection.release();
@@ -176,27 +181,24 @@ app.delete('/api/transactions/:id', async (req, res) => {
         const tx = toCamel(rows[0]);
         const items = Array.isArray(tx.items) ? tx.items : [];
         
-        // 2. Balikkan Stok
+        // 2. Balikkan Stok (Reversal)
         for (const item of items) {
             let revertSql = '';
             if (tx.type === 'IN') {
-                // Jika transaksi masuk dihapus, kurangi stok
                 revertSql = 'UPDATE inventory SET stock = stock - ? WHERE id = ?';
             } else {
-                // Jika transaksi keluar dihapus, tambah stok kembali
                 revertSql = 'UPDATE inventory SET stock = stock + ? WHERE id = ?';
             }
             await connection.query(revertSql, [item.quantity, item.itemId]);
         }
 
-        // 3. Hapus Transaksi
+        // 3. Hapus Record
         await connection.query('DELETE FROM transactions WHERE id = ?', [req.params.id]);
 
         await connection.commit();
         res.json({ success: true });
     } catch (err) {
         await connection.rollback();
-        console.error("DELETE ERROR:", err);
         res.status(500).json({ error: err.message });
     } finally {
         connection.release();

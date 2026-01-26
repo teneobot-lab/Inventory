@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Transaction } from '../types';
-import { Search, Filter, ArrowDownLeft, ArrowUpRight, Edit, Trash2 } from 'lucide-react';
+import { Search, Filter, ArrowDownLeft, ArrowUpRight, Edit, Trash2, Calendar, Clock, User } from 'lucide-react';
 
 interface TransactionHistoryProps {
   transactions: Transaction[];
@@ -12,7 +12,6 @@ export const TransactionHistory: React.FC<TransactionHistoryProps> = ({ transact
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState<'ALL' | 'IN' | 'OUT'>('ALL');
 
-  // Filter and Sort: Ensure newest transactions are first based on date string
   const filteredTransactions = [...transactions]
     .filter(t => {
       const matchesSearch = 
@@ -29,91 +28,99 @@ export const TransactionHistory: React.FC<TransactionHistoryProps> = ({ transact
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
-        <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Riwayat Transaksi</h2>
+      <div className="flex flex-col sm:flex-row justify-between items-center gap-4 bg-white dark:bg-slate-900 p-4 rounded-xl border dark:border-slate-800 shadow-sm">
+        <h2 className="text-xl font-bold text-slate-800 dark:text-white">Riwayat Transaksi</h2>
         
         <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
-          {/* Search Bar */}
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400" size={18} />
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400" size={16} />
             <input 
               type="text" 
-              placeholder="Cari ID, No. Ref, Supplier, Notes..." 
-              className="w-full sm:w-72 pl-10 pr-4 py-2 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-slate-900"
+              placeholder="Cari transaksi..." 
+              className="w-full sm:w-64 pl-9 pr-4 py-2 border dark:border-slate-700 dark:bg-slate-800 rounded-lg text-sm outline-none"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
           </div>
 
-          {/* Filter Type */}
-          <div className="relative">
-            <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400" size={18} />
-            <select 
-              className="pl-10 pr-8 py-2 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none bg-white dark:bg-slate-900"
-              value={filterType}
-              onChange={(e) => setFilterType(e.target.value as any)}
-            >
-              <option value="ALL">Semua Tipe</option>
-              <option value="IN">Masuk (IN)</option>
-              <option value="OUT">Keluar (OUT)</option>
-            </select>
-          </div>
+          <select 
+            className="px-4 py-2 border dark:border-slate-700 dark:bg-slate-800 rounded-lg text-sm outline-none"
+            value={filterType}
+            onChange={(e) => setFilterType(e.target.value as any)}
+          >
+            <option value="ALL">Semua Tipe</option>
+            <option value="IN">Masuk (IN)</option>
+            <option value="OUT">Keluar (OUT)</option>
+          </select>
         </div>
       </div>
 
-      <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-hidden flex flex-col">
-        {/* SCROLLABLE TABLE CONTAINER */}
-        <div className="overflow-auto max-h-[65vh]">
-          <table className="w-full text-left text-sm text-slate-600 dark:text-slate-300 relative">
-            <thead className="bg-slate-50 dark:bg-slate-900 text-slate-700 dark:text-slate-200 uppercase text-xs font-semibold sticky top-0 z-10 shadow-sm">
+      <div className="bg-white dark:bg-slate-900 rounded-xl shadow-sm border dark:border-slate-800 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm text-slate-600 dark:text-slate-300">
+            <thead className="bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400 uppercase text-[10px] font-bold">
               <tr>
-                <th className="px-6 py-4">ID Transaksi</th>
-                <th className="px-6 py-4">Tipe</th>
-                <th className="px-6 py-4">Tanggal</th>
-                <th className="px-6 py-4">Ref No</th>
-                <th className="px-6 py-4">Supplier</th>
+                <th className="px-6 py-4">Waktu & User</th>
+                <th className="px-6 py-4">ID / Tipe</th>
+                <th className="px-6 py-4">Ref / Supplier</th>
                 <th className="px-6 py-4">Items</th>
                 <th className="px-6 py-4">Notes</th>
-                <th className="px-6 py-4 text-right">Actions</th>
+                <th className="px-6 py-4 text-right">Aksi</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
+            <tbody className="divide-y dark:divide-slate-700">
               {filteredTransactions.map(t => (
-                <tr key={t.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
-                  <td className="px-6 py-4 font-mono text-xs font-bold text-slate-700 dark:text-slate-300">{t.id}</td>
-                  <td className="px-6 py-4">
+                <tr key={t.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="flex items-center gap-2 font-medium text-slate-900 dark:text-white mb-1">
+                        <Calendar size={14} className="text-blue-500" />
+                        {new Date(t.date).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })}
+                    </div>
+                    <div className="flex items-center gap-3 text-[10px] text-slate-400 uppercase">
+                        <span className="flex items-center gap-1"><Clock size={10} /> {new Date(t.date).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}</span>
+                        <span className="flex items-center gap-1"><User size={10} /> {t.performer || 'System'}</span>
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="font-mono text-[10px] font-bold text-slate-400 mb-1">{t.id}</div>
                     {t.type === 'IN' ? (
-                      <span className="flex items-center gap-1 text-green-600 bg-green-50 dark:bg-green-900/30 px-2 py-1 rounded text-xs font-bold w-fit">
-                        <ArrowDownLeft size={14} /> Masuk
+                      <span className="inline-flex items-center gap-1 text-green-600 bg-green-50 dark:bg-green-900/20 px-2 py-0.5 rounded text-[10px] font-bold">
+                        <ArrowDownLeft size={10} /> MASUK
                       </span>
                     ) : (
-                      <span className="flex items-center gap-1 text-orange-600 bg-orange-50 dark:bg-orange-900/30 px-2 py-1 rounded text-xs font-bold w-fit">
-                        <ArrowUpRight size={14} /> Keluar
+                      <span className="inline-flex items-center gap-1 text-orange-600 bg-orange-50 dark:bg-orange-900/20 px-2 py-0.5 rounded text-[10px] font-bold">
+                        <ArrowUpRight size={10} /> KELUAR
                       </span>
                     )}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap">{new Date(t.date).toLocaleString('id-ID', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
-                  <td className="px-6 py-4 font-mono text-xs">{t.referenceNumber || '-'}</td>
-                  <td className="px-6 py-4 font-medium text-slate-700 dark:text-slate-200">{t.supplier || '-'}</td>
-                  <td className="px-6 py-4">
-                    <span className="bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 text-xs font-semibold px-2 py-1 rounded whitespace-nowrap">
-                      {t.items.length} Items
-                    </span>
+                  <td className="px-6 py-4 font-medium">
+                    <div className="text-slate-800 dark:text-slate-200">{t.referenceNumber || '-'}</div>
+                    <div className="text-[10px] text-slate-400">{t.supplier || 'N/A'}</div>
                   </td>
-                  <td className="px-6 py-4 max-w-xs truncate" title={t.notes}>{t.notes}</td>
+                  <td className="px-6 py-4">
+                    <div className="flex flex-col gap-1">
+                        {t.items.slice(0, 2).map((item, i) => (
+                            <div key={i} className="text-xs">
+                                <span className="font-bold text-blue-600">{item.quantity}</span> {item.unit} {item.itemName}
+                            </div>
+                        ))}
+                        {t.items.length > 2 && <div className="text-[10px] text-slate-400">+{t.items.length - 2} barang lainnya...</div>}
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 max-w-[150px] truncate italic text-slate-500" title={t.notes}>{t.notes || '-'}</td>
                   <td className="px-6 py-4 text-right">
-                    <div className="flex justify-end gap-2">
+                    <div className="flex justify-end gap-1">
                         <button 
-                        onClick={() => onEditTransaction(t)}
-                        className="inline-flex items-center gap-1 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/50 px-3 py-1.5 rounded-lg text-xs font-medium border border-blue-200 dark:border-blue-900 transition-colors"
+                            onClick={() => onEditTransaction(t)}
+                            className="p-2 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition-colors"
                         >
-                        <Edit size={14} /> Edit
+                            <Edit size={16} />
                         </button>
                         <button 
-                        onClick={() => onDeleteTransaction(t.id)}
-                        className="inline-flex items-center gap-1 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/50 px-3 py-1.5 rounded-lg text-xs font-medium border border-red-200 dark:border-red-900 transition-colors"
+                            onClick={() => onDeleteTransaction(t.id)}
+                            className="p-2 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors"
                         >
-                        <Trash2 size={14} /> Hapus
+                            <Trash2 size={16} />
                         </button>
                     </div>
                   </td>
@@ -121,10 +128,10 @@ export const TransactionHistory: React.FC<TransactionHistoryProps> = ({ transact
               ))}
               {filteredTransactions.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="px-6 py-12 text-center text-slate-400">
-                    <div className="flex flex-col items-center justify-center gap-2">
-                       <Search size={32} className="opacity-20"/>
-                       <p>Tidak ada transaksi ditemukan.</p>
+                  <td colSpan={6} className="px-6 py-20 text-center text-slate-400">
+                    <div className="flex flex-col items-center justify-center gap-3">
+                       <Search size={48} className="opacity-10"/>
+                       <p className="text-sm font-medium">Tidak ada transaksi ditemukan.</p>
                     </div>
                   </td>
                 </tr>
