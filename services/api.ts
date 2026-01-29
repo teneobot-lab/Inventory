@@ -61,6 +61,15 @@ export const api = {
   deleteInventory: async (id: string) => {
     await fetch(`${API_URL}/inventory/${id}`, { method: 'DELETE' });
   },
+  deleteInventoryBulk: async (ids: string[]) => {
+    const res = await fetch(`${API_URL}/inventory/bulk-delete`, { 
+        method: 'POST', 
+        headers, 
+        body: JSON.stringify({ ids }) 
+    });
+    if (!res.ok) throw new Error("Gagal menghapus item secara massal");
+    return res.json();
+  },
 
   // Transactions
   getTransactions: async (): Promise<Transaction[]> => {

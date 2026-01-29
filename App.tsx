@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { LayoutDashboard, Package, ArrowDownLeft, ArrowUpRight, FileBarChart, Settings, Menu, X, LogOut, History as HistoryIcon, Search, Bell, AlertTriangle, ChevronRight, CheckCircle, Ban, Database, ClipboardList, ListPlus, Wifi, Clock, Sun, Moon, Music } from 'lucide-react';
 import { InventoryItem, Transaction, User, RejectItem, RejectTransaction } from './types';
@@ -160,6 +161,16 @@ const App: React.FC = () => {
       await api.deleteInventory(id);
       refreshData();
     }
+  };
+
+  const handleBulkDeleteItems = async (ids: string[]) => {
+      try {
+          await api.deleteInventoryBulk(ids);
+          refreshData();
+      } catch (err) {
+          console.error("Bulk delete failed", err);
+          alert("Gagal menghapus beberapa item sekaligus.");
+      }
   };
 
   // --- Reject Handlers ---
@@ -520,6 +531,7 @@ const App: React.FC = () => {
                 onAddItem={handleAddItem} 
                 onUpdateItem={handleUpdateItem} 
                 onDeleteItem={handleDeleteItem} 
+                onBulkDeleteItem={handleBulkDeleteItems}
               />
             )}
 

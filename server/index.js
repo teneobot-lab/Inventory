@@ -146,6 +146,17 @@ app.delete('/api/inventory/:id', async (req, res) => {
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+app.post('/api/inventory/bulk-delete', async (req, res) => {
+    const { ids } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0) {
+        return res.status(400).json({ error: "Invalid IDs provided" });
+    }
+    try {
+        await pool.query('DELETE FROM inventory WHERE id IN (?)', [ids]);
+        res.json({ success: true, count: ids.length });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // --- TRANSACTIONS ---
 app.get('/api/transactions', async (req, res) => {
     try {

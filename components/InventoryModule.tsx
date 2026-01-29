@@ -9,9 +9,10 @@ interface InventoryModuleProps {
   onAddItem: (item: InventoryItem) => void;
   onUpdateItem: (item: InventoryItem) => void;
   onDeleteItem: (id: string) => void;
+  onBulkDeleteItem?: (ids: string[]) => void;
 }
 
-export const InventoryModule: React.FC<InventoryModuleProps> = ({ items, onAddItem, onUpdateItem, onDeleteItem }) => {
+export const InventoryModule: React.FC<InventoryModuleProps> = ({ items, onAddItem, onUpdateItem, onDeleteItem, onBulkDeleteItem }) => {
   const [searchTerm, setSearchTerm] = useState('');
   
   // Modal States
@@ -55,8 +56,16 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ items, onAddIt
   };
 
   const handleBulkDelete = () => {
-    if (confirm(`Are you sure you want to delete ${selectedIds.size} items?`)) {
-      selectedIds.forEach(id => onDeleteItem(id));
+    if (selectedIds.size === 0) return;
+    
+    if (confirm(`Apakah Anda yakin ingin menghapus ${selectedIds.size} item secara massal? Tindakan ini tidak dapat dibatalkan.`)) {
+      if (onBulkDeleteItem) {
+          // Senior approach: Use atomic bulk delete
+          onBulkDeleteItem(Array.from(selectedIds));
+      } else {
+          // Fallback if bulk delete not provided (less efficient)
+          selectedIds.forEach(id => onDeleteItem(id));
+      }
       setSelectedIds(new Set());
     }
   };
