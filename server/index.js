@@ -26,7 +26,9 @@ const dbConfig = {
     waitForConnections: true,
     connectionLimit: 10,
     queueLimit: 0,
-    timezone: '+07:00'
+    timezone: '+07:00',
+    charset: 'utf8mb4',
+    connectTimeout: 15000 // Menambah timeout untuk stabilitas di VPS
 };
 
 const pool = mysql.createPool(dbConfig);
@@ -53,16 +55,15 @@ const toCamel = (o) => {
 
 // --- ROUTES ---
 
-// Root route agar tidak muncul "Cannot GET /"
 app.get('/', (req, res) => {
     res.json({
         message: "SmartInventory API is Running",
-        version: "1.0.0",
+        version: "1.0.2",
+        db_user: process.env.DB_USER,
         endpoint: "/api/health"
     });
 });
 
-// Health Check dengan logging mendalam
 app.get('/api/health', async (req, res) => {
     let connection;
     try {
@@ -71,7 +72,7 @@ app.get('/api/health', async (req, res) => {
         res.json({ 
             status: 'online', 
             database: 'connected', 
-            config_host: dbConfig.host,
+            user: dbConfig.user,
             timestamp: new Date() 
         });
     } catch (err) {
@@ -81,7 +82,13 @@ app.get('/api/health', async (req, res) => {
             message: 'Database connection failed', 
             error_code: err.code,
             details: err.message,
-            tip: "Pastikan MySQL berjalan dan database 'smart_inventory' sudah diimport."
+            config_debug: {
+                host: dbConfig.host,
+                user: dbConfig.user,
+                database: dbConfig.database,
+                has_password: dbConfig.password !== ''
+            },
+            tip: "Cek apakah user 'angkringan_user' memiliki izin akses ke database 'smart_inventory'."
         });
     } finally {
         if (connection) connection.release();
