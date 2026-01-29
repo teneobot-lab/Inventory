@@ -9,7 +9,11 @@ const app = express();
 const PORT = process.env.PORT || 3010;
 
 // Middleware
-app.use(cors());
+app.use(cors({
+    origin: '*', // Izinkan semua origin untuk mempermudah koneksi awal
+    methods: ['GET', 'POST', 'PUT', 'DELETE'],
+    allowedHeaders: ['Content-Type', 'Authorization']
+}));
 app.use(bodyParser.json({ limit: '50mb' }));
 app.use(bodyParser.urlencoded({ limit: '50mb', extended: true }));
 
@@ -61,8 +65,9 @@ app.get('/api/health', async (req, res) => {
         const connection = await pool.getConnection();
         await connection.ping();
         connection.release();
-        res.json({ status: 'online', db: 'connected' });
+        res.json({ status: 'online', db: 'connected', timestamp: new Date() });
     } catch (err) {
+        console.error("Health Check Failed:", err.message);
         res.status(500).json({ status: 'error', error: err.message });
     }
 });
@@ -155,9 +160,6 @@ app.post('/api/transactions', async (req, res) => {
     } finally { connection.release(); }
 });
 
-/**
- * REFACTOR: PUT Transaction with Stock Balancing
- */
 app.put('/api/transactions/:id', async (req, res) => {
     const txId = req.params.id;
     const newTxData = req.body;
@@ -165,19 +167,16 @@ app.put('/api/transactions/:id', async (req, res) => {
     try {
         await connection.beginTransaction();
         
-        // 1. Get Old Data
         const [oldRows] = await connection.query('SELECT * FROM transactions WHERE id = ?', [txId]);
         if (oldRows.length === 0) throw new Error("Transaction not found");
         const oldTx = toCamel(oldRows[0]);
 
-        // 2. REVERT Old Stock
         const oldItems = Array.isArray(oldTx.items) ? oldTx.items : [];
         for (const item of oldItems) {
             let revertSql = oldTx.type === 'IN' ? 'UPDATE inventory SET stock = stock - ? WHERE id = ?' : 'UPDATE inventory SET stock = stock + ? WHERE id = ?';
             await connection.query(revertSql, [item.quantity, item.itemId]);
         }
 
-        // 3. UPDATE Transaction Record
         const updateSql = `UPDATE transactions SET date=?, reference_number=?, supplier=?, notes=?, photos=?, items=?, performer=? WHERE id=?`;
         await connection.query(updateSql, [
             new Date(newTxData.date), 
@@ -190,7 +189,6 @@ app.put('/api/transactions/:id', async (req, res) => {
             txId
         ]);
 
-        // 4. APPLY New Stock
         const newItems = Array.isArray(newTxData.items) ? newTxData.items : [];
         for (const item of newItems) {
             let applySql = oldTx.type === 'IN' ? 'UPDATE inventory SET stock = stock + ? WHERE id = ?' : 'UPDATE inventory SET stock = stock - ? WHERE id = ?';
@@ -267,6 +265,7 @@ app.post('/api/reject/transactions', async (req, res) => {
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.listen(PORT, () => {
-    console.log(`Server Backend running on http://localhost:${PORT}`);
+// CRITICAL: Bind to 0.0.0.0 instead of default localhost
+app.listen(PORT, '0.0.0.0', () => {
+    console.log(`SmartInventory Backend is listening on 0.0.0.0:${PORT}`);
 });

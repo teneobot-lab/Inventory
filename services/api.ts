@@ -12,10 +12,23 @@ export const api = {
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 4000);
-      const res = await fetch(`${API_URL}/health`, { method: 'GET', signal: controller.signal });
+      
+      // Request ke /api/health
+      const res = await fetch(`${API_URL}/health`, { 
+        method: 'GET', 
+        signal: controller.signal,
+        cache: 'no-store'
+      });
+      
       clearTimeout(timeoutId);
-      return res.ok;
+      
+      if (res.ok) {
+        const data = await res.json();
+        return data.status === 'online';
+      }
+      return false;
     } catch (e) {
+      console.warn("API Connection Check Failed:", e);
       return false;
     }
   },
