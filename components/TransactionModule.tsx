@@ -122,7 +122,8 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
       const sheet = workbook.Sheets[workbook.SheetNames[0]];
       const jsonData: any[][] = XLSX.utils.sheet_to_json(sheet, { header: 1 });
 
-      const newCartItems: TransactionItem[] = [];
+      // Use a map to aggregate by SKU
+      const importAggregator = new Map<string, TransactionItem>();
       
       for (let i = 1; i < jsonData.length; i++) {
         const row = jsonData[i];
@@ -131,39 +132,60 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
         const rowSku = String(row[0] || '').trim();
         const rowName = String(row[1] || '').trim();
         const rowQty = parseFloat(String(row[2] || '0'));
-        const rowUnit = String(row[3] || 'pcs').trim();
+        const rowUnit = String(row[3] || '').trim();
 
         if (!rowSku || isNaN(rowQty) || rowQty <= 0) continue;
 
-        let matched = items.find(item => item.sku.toLowerCase() === rowSku.toLowerCase());
+        const skuKey = rowSku.toLowerCase();
 
-        if (!matched) {
-          const autoItem: InventoryItem = {
-            id: `AUTO-${Date.now()}-${Math.floor(Math.random()*1000)}`,
-            name: rowName || `New Item (${rowSku})`,
-            sku: rowSku,
-            category: 'Imported',
-            stock: 0,
-            minStock: 5,
-            unit: rowUnit,
-            price: 0,
-            conversions: [],
-            lastUpdated: new Date().toISOString()
-          };
-          await onAddItem(autoItem);
-          matched = autoItem;
+        if (importAggregator.has(skuKey)) {
+          const existing = importAggregator.get(skuKey)!;
+          existing.quantity += rowQty;
+        } else {
+          let matched = items.find(item => item.sku.toLowerCase() === skuKey);
+
+          if (!matched) {
+            const autoItem: InventoryItem = {
+              id: `AUTO-${Date.now()}-${Math.floor(Math.random()*1000)}`,
+              name: rowName || `New Item (${rowSku})`,
+              sku: rowSku,
+              category: 'Imported',
+              stock: 0,
+              minStock: 5,
+              unit: rowUnit || 'pcs',
+              price: 0,
+              conversions: [],
+              lastUpdated: new Date().toISOString()
+            };
+            await onAddItem(autoItem);
+            matched = autoItem;
+          }
+
+          importAggregator.set(skuKey, {
+            itemId: matched.id,
+            itemName: matched.name,
+            sku: matched.sku,
+            quantity: rowQty,
+            unit: rowUnit || matched.unit
+          });
         }
-
-        newCartItems.push({
-          itemId: matched.id,
-          itemName: matched.name,
-          sku: matched.sku,
-          quantity: rowQty,
-          unit: rowUnit || matched.unit
-        });
       }
 
-      setCart(prev => [...prev, ...newCartItems]);
+      const importedItems = Array.from(importAggregator.values());
+
+      setCart(prev => {
+        const mergedCart = [...prev];
+        importedItems.forEach(newItem => {
+          const existingInCart = mergedCart.find(ci => ci.sku.toLowerCase() === newItem.sku.toLowerCase());
+          if (existingInCart) {
+            existingInCart.quantity += newItem.quantity;
+          } else {
+            mergedCart.push(newItem);
+          }
+        });
+        return mergedCart;
+      });
+
       setIsBulkImporting(false);
       if (bulkFileRef.current) bulkFileRef.current.value = '';
     };
@@ -207,15 +229,24 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
     const qtyNum = parseFloat(inputQty);
     if (isNaN(qtyNum) || qtyNum <= 0) return;
 
-    const newItem: TransactionItem = {
-      itemId: selectedItem.id,
-      itemName: selectedItem.name,
-      sku: selectedItem.sku,
-      quantity: qtyNum,
-      unit: inputUnit || selectedItem.unit
-    };
+    const skuKey = selectedItem.sku.toLowerCase();
 
-    setCart(prev => [...prev, newItem]);
+    setCart(prev => {
+      const existingInCart = prev.find(ci => ci.sku.toLowerCase() === skuKey);
+      if (existingInCart) {
+        // If same SKU already in cart, just sum up the quantity
+        return prev.map(ci => ci.sku.toLowerCase() === skuKey ? { ...ci, quantity: ci.quantity + qtyNum } : ci);
+      } else {
+        return [...prev, {
+          itemId: selectedItem.id,
+          itemName: selectedItem.name,
+          sku: selectedItem.sku,
+          quantity: qtyNum,
+          unit: inputUnit || selectedItem.unit
+        }];
+      }
+    });
+
     setSelectedItem(null);
     setSearchQuery('');
     setInputQty('');
