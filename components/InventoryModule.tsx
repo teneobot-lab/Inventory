@@ -24,9 +24,16 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ items, onAddIt
   
   const [editingItem, setEditingItem] = useState<InventoryItem | null>(null);
   
-  // Form State
-  const [formData, setFormData] = useState<Partial<InventoryItem>>({
-    name: '', sku: '', category: '', stock: 0, minStock: 0, unit: 'pcs', price: 0, conversions: []
+  // Form State - Using strings for numeric fields to allow empty state and decimals
+  const [formData, setFormData] = useState({
+    name: '',
+    sku: '',
+    category: '',
+    stock: '',
+    minStock: '',
+    unit: '',
+    price: '',
+    conversions: [] as InventoryUnitConversion[]
   });
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -72,20 +79,36 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ items, onAddIt
   const handleOpenModal = (item?: InventoryItem) => {
     if (item) {
       setEditingItem(item);
-      setFormData({ ...item, conversions: item.conversions || [] });
+      setFormData({
+        name: item.name,
+        sku: item.sku,
+        category: item.category,
+        stock: item.stock.toString(),
+        minStock: item.minStock.toString(),
+        unit: item.unit,
+        price: item.price.toString(),
+        conversions: item.conversions || []
+      });
     } else {
       setEditingItem(null);
       setFormData({ 
-        name: '', sku: '', category: '', stock: 0, minStock: 5, unit: 'pcs', price: 0, conversions: [] 
+        name: '', sku: '', category: '', stock: '', minStock: '5', unit: 'pcs', price: '', conversions: [] 
       });
     }
     setIsModalOpen(true);
   };
 
+  const handleNumericInput = (field: 'stock' | 'minStock' | 'price', value: string) => {
+    // Allow digits and at most one decimal point
+    const sanitized = value.replace(/[^0-9.]/g, '');
+    const dots = sanitized.split('.').length - 1;
+    if (dots > 1) return;
+    setFormData({ ...formData, [field]: sanitized });
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
-    // Safety check for manual SKU duplicates
     const normalizedSku = formData.sku?.trim().toLowerCase();
     const isDuplicate = items.some(item => 
       item.sku.trim().toLowerCase() === normalizedSku && 
@@ -97,35 +120,48 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ items, onAddIt
       return;
     }
 
+    const payload: InventoryItem = {
+      id: editingItem?.id || Math.random().toString(36).substr(2, 9),
+      name: formData.name,
+      sku: formData.sku,
+      category: formData.category,
+      stock: parseFloat(formData.stock) || 0,
+      minStock: parseFloat(formData.minStock) || 0,
+      unit: formData.unit,
+      price: parseFloat(formData.price) || 0,
+      conversions: formData.conversions,
+      lastUpdated: new Date().toISOString()
+    };
+
     if (editingItem) {
-      onUpdateItem({ ...editingItem, ...formData } as InventoryItem);
+      onUpdateItem(payload);
     } else {
-      onAddItem({
-        ...formData,
-        id: Math.random().toString(36).substr(2, 9),
-        lastUpdated: new Date().toISOString()
-      } as InventoryItem);
+      onAddItem(payload);
     }
     setIsModalOpen(false);
   };
 
   // --- Conversion Logic ---
   const addConversion = () => {
-    const currentConversions = formData.conversions || [];
     setFormData({
       ...formData,
-      conversions: [...currentConversions, { name: '', factor: 1 }]
+      conversions: [...formData.conversions, { name: '', factor: 1 }]
     });
   };
 
-  const updateConversion = (index: number, field: keyof InventoryUnitConversion, value: string | number) => {
-    const currentConversions = [...(formData.conversions || [])];
-    currentConversions[index] = { ...currentConversions[index], [field]: value };
+  const updateConversion = (index: number, field: keyof InventoryUnitConversion, value: string) => {
+    const currentConversions = [...formData.conversions];
+    if (field === 'factor') {
+      const sanitized = value.replace(/[^0-9.]/g, '');
+      currentConversions[index] = { ...currentConversions[index], factor: parseFloat(sanitized) || 0 };
+    } else {
+      currentConversions[index] = { ...currentConversions[index], [field]: value };
+    }
     setFormData({ ...formData, conversions: currentConversions });
   };
 
   const removeConversion = (index: number) => {
-    const currentConversions = [...(formData.conversions || [])];
+    const currentConversions = [...formData.conversions];
     currentConversions.splice(index, 1);
     setFormData({ ...formData, conversions: currentConversions });
   };
@@ -159,9 +195,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ items, onAddIt
         return;
       }
       
-      // Layer 1: Check against existing items in Database
       const existingSkusInDb = new Set(items.map(i => i.sku.trim().toLowerCase()));
-      // Layer 2: Check against items within the SAME file
       const processedSkusInCurrentFile = new Set();
       
       let importedCount = 0;
@@ -174,16 +208,14 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ items, onAddIt
         const name = row[0] ? String(row[0]).trim() : "Unnamed Item";
         const skuInput = row[1] ? String(row[1]).trim() : `AUTO-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
         const category = row[2] ? String(row[2]).trim() : "Uncategorized";
-        const stock = row[3] ? parseInt(String(row[3])) : 0;
-        const minStock = row[4] ? parseInt(String(row[4])) : 0;
+        const stock = parseFloat(String(row[3])) || 0;
+        const minStock = parseFloat(String(row[4])) || 0;
         const unit = row[5] ? String(row[5]).trim() : "pcs";
-        const price = row[6] ? parseInt(String(row[6])) : 0;
+        const price = parseFloat(String(row[6])) || 0;
 
         const normalizedSku = skuInput.toLowerCase();
 
-        // ELIMINATION LOGIC:
         if (existingSkusInDb.has(normalizedSku) || processedSkusInCurrentFile.has(normalizedSku)) {
-          console.warn(`Skipping duplicate SKU found in database or file: ${skuInput}`);
           skippedCount++;
           continue;
         }
@@ -206,9 +238,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ items, onAddIt
         importedCount++;
       }
       
-      const summaryMsg = `Import Selesai.\n- Berhasil: ${importedCount} item baru\n- Dilewati (SKU Sudah Ada/Duplikat): ${skippedCount} item`;
-      alert(summaryMsg);
-      
+      alert(`Import Selesai.\n- Berhasil: ${importedCount} item baru\n- Dilewati (SKU Duplikat): ${skippedCount} item`);
       setIsImportModalOpen(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
     };
@@ -235,7 +265,6 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ items, onAddIt
         </div>
       </div>
 
-      {/* Bulk Action Bar */}
       {selectedIds.size > 0 && (
         <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 p-3 rounded-lg flex items-center justify-between animate-fade-in shadow-sm">
           <span className="text-blue-800 dark:text-blue-300 font-medium px-2">{selectedIds.size} items selected</span>
@@ -348,7 +377,6 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ items, onAddIt
         </div>
       </div>
 
-      {/* Add/Edit Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl max-w-lg w-full p-8 animate-scale-in max-h-[90vh] overflow-y-auto border border-slate-200 dark:border-slate-800">
@@ -359,40 +387,39 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ items, onAddIt
             <form onSubmit={handleSubmit} className="space-y-5">
               <div>
                 <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">Item Name</label>
-                <input required type="text" className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-3 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-blue-500/20 outline-none" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} placeholder="e.g. Laptop Ultra Pro" />
+                <input required type="text" className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-3 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-blue-500/20 outline-none" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">SKU</label>
-                  <input required type="text" className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-3 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-blue-500/20 outline-none font-mono text-sm" value={formData.sku} onChange={e => setFormData({...formData, sku: e.target.value})} placeholder="CODE-001" />
+                  <input required type="text" className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-3 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-blue-500/20 outline-none font-mono text-sm" value={formData.sku} onChange={e => setFormData({...formData, sku: e.target.value})} />
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">Category</label>
-                  <input required type="text" className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-3 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-blue-500/20 outline-none" value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})} placeholder="General" />
+                  <input required type="text" className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-3 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-blue-500/20 outline-none" value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})} />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
                  <div>
                   <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">Stock Level</label>
-                  <input required type="number" className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-3 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-blue-500/20 outline-none font-bold" value={formData.stock} onChange={e => setFormData({...formData, stock: Number(e.target.value)})} />
+                  <input required type="text" inputMode="decimal" className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-3 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-blue-500/20 outline-none font-bold" value={formData.stock} onChange={e => handleNumericInput('stock', e.target.value)} />
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">Min. Alert</label>
-                  <input required type="number" className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-3 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-blue-500/20 outline-none text-red-500 font-bold" value={formData.minStock} onChange={e => setFormData({...formData, minStock: Number(e.target.value)})} />
+                  <input required type="text" inputMode="decimal" className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-3 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-blue-500/20 outline-none text-red-500 font-bold" value={formData.minStock} onChange={e => handleNumericInput('minStock', e.target.value)} />
                 </div>
               </div>
                <div className="grid grid-cols-2 gap-4">
                  <div>
                   <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">Unit</label>
-                  <input required type="text" placeholder="pcs, kg, etc" className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-3 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-blue-500/20 outline-none" value={formData.unit} onChange={e => setFormData({...formData, unit: e.target.value})} />
+                  <input required type="text" className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-3 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-blue-500/20 outline-none" value={formData.unit} onChange={e => setFormData({...formData, unit: e.target.value})} />
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">Base Price</label>
-                  <input required type="number" className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-3 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-blue-500/20 outline-none font-mono" value={formData.price} onChange={e => setFormData({...formData, price: Number(e.target.value)})} />
+                  <input required type="text" inputMode="decimal" className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-3 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-blue-500/20 outline-none font-mono" value={formData.price} onChange={e => handleNumericInput('price', e.target.value)} />
                 </div>
               </div>
 
-              {/* Multi-unit Conversion Section */}
               <div className="bg-slate-50 dark:bg-slate-800/50 p-5 rounded-2xl border border-slate-200 dark:border-slate-700 mt-2">
                 <div className="flex justify-between items-center mb-4">
                   <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">Variation Units</label>
@@ -407,7 +434,6 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ items, onAddIt
                        <span className="text-xs text-slate-400 font-bold ml-1">1</span>
                        <input 
                          type="text" 
-                         placeholder="e.g. Box" 
                          className="flex-1 bg-slate-50 dark:bg-slate-900 border-none rounded-lg p-2 text-xs outline-none focus:ring-1 focus:ring-blue-500/30"
                          value={conv.name}
                          onChange={(e) => updateConversion(idx, 'name', e.target.value)}
@@ -415,13 +441,11 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ items, onAddIt
                        />
                        <span className="text-xs text-slate-400 font-bold">=</span>
                        <input 
-                         type="number" 
-                         placeholder="Factor" 
+                         type="text" 
+                         inputMode="decimal"
                          className="w-20 bg-slate-50 dark:bg-slate-900 border-none rounded-lg p-2 text-xs outline-none focus:ring-1 focus:ring-blue-500/30 text-center font-bold"
-                         value={conv.factor}
-                         onChange={(e) => updateConversion(idx, 'factor', Number(e.target.value))}
-                         min="0.1"
-                         step="0.1"
+                         value={conv.factor.toString()}
+                         onChange={(e) => updateConversion(idx, 'factor', e.target.value)}
                          required
                        />
                        <span className="text-xs text-slate-400 font-bold pr-2">{formData.unit}</span>
@@ -442,7 +466,6 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ items, onAddIt
         </div>
       )}
 
-      {/* Import Modal */}
       {isImportModalOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl max-w-md w-full p-8 animate-scale-in border border-slate-200 dark:border-slate-800">

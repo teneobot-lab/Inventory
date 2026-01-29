@@ -54,7 +54,6 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const bulkFileRef = useRef<HTMLInputElement>(null);
 
-  // --- TEMPLATE DOWNLOAD LOGIC ---
   const handleDownloadTemplate = () => {
     const headers = [["SKU", "Nama Barang", "Qty", "Satuan"]];
     const sampleData = [["ELEC-001", "Laptop Gaming", "5", "unit"]];
@@ -300,6 +299,14 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
     }
   };
 
+  const handleQtyInput = (value: string) => {
+    // Allow digits and at most one decimal point
+    const sanitized = value.replace(/[^0-9.]/g, '');
+    const dots = sanitized.split('.').length - 1;
+    if (dots > 1) return;
+    setInputQty(sanitized);
+  };
+
   return (
     <div className="space-y-6 animate-fade-in relative">
       <Toast 
@@ -361,18 +368,18 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
                   <>
                     <div>
                       <label className="block text-xs font-bold text-slate-500 mb-1">No. Surat Jalan / Ref</label>
-                      <input type="text" value={referenceNumber} onChange={e => setReferenceNumber(e.target.value)} placeholder="Contoh: SJ-001" className="w-full border border-slate-300 dark:border-slate-700 dark:bg-slate-800 rounded-lg p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500/20" />
+                      <input type="text" value={referenceNumber} onChange={e => setReferenceNumber(e.target.value)} className="w-full border border-slate-300 dark:border-slate-700 dark:bg-slate-800 rounded-lg p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500/20" />
                     </div>
                     <div>
                       <label className="block text-xs font-bold text-slate-500 mb-1">Supplier</label>
-                      <input type="text" value={supplier} onChange={e => setSupplier(e.target.value)} placeholder="Nama Supplier" className="w-full border border-slate-300 dark:border-slate-700 dark:bg-slate-800 rounded-lg p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500/20" />
+                      <input type="text" value={supplier} onChange={e => setSupplier(e.target.value)} className="w-full border border-slate-300 dark:border-slate-700 dark:bg-slate-800 rounded-lg p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500/20" />
                     </div>
                   </>
                 )}
 
                 <div>
                   <label className="block text-xs font-bold text-slate-500 mb-1">Keterangan</label>
-                  <textarea rows={2} value={notes} onChange={e => setNotes(e.target.value)} placeholder="Opsional..." className="w-full border border-slate-300 dark:border-slate-700 dark:bg-slate-800 rounded-lg p-2 text-sm outline-none resize-none focus:ring-2 focus:ring-blue-500/20" />
+                  <textarea rows={2} value={notes} onChange={e => setNotes(e.target.value)} className="w-full border border-slate-300 dark:border-slate-700 dark:bg-slate-800 rounded-lg p-2 text-sm outline-none resize-none focus:ring-2 focus:ring-blue-500/20" />
                 </div>
 
                 <div>
@@ -433,7 +440,6 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
                               setHighlightedIndex(0);
                             }}
                             onKeyDown={handleKeyDownSearch}
-                            placeholder="Cari item..."
                             className="w-full pl-10 pr-4 py-2 bg-white dark:bg-slate-900 border dark:border-slate-700 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500/40"
                           />
                        </div>
@@ -461,7 +467,7 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
 
                     <div className="md:col-span-3">
                        <label className="block text-[10px] font-bold text-slate-400 mb-1 uppercase tracking-tighter">2. Qty</label>
-                       <input ref={qtyInputRef} type="text" inputMode="numeric" value={inputQty} onChange={e => setInputQty(e.target.value.replace(/[^0-9.]/g, ''))} onKeyDown={handleKeyDownQty} placeholder="0" className="w-full border dark:border-slate-700 dark:bg-slate-900 rounded-lg p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500/40 font-bold" />
+                       <input ref={qtyInputRef} type="text" inputMode="decimal" value={inputQty} onChange={e => handleQtyInput(e.target.value)} onKeyDown={handleKeyDownQty} className="w-full border dark:border-slate-700 dark:bg-slate-900 rounded-lg p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500/40 font-bold" />
                     </div>
 
                     <div className="md:col-span-3">
@@ -527,9 +533,3 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
     </div>
   );
 };
-
-const ShoppingCart = ({ size, className }: { size: number, className?: string }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-    <circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/>
-  </svg>
-);
