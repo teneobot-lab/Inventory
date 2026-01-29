@@ -126,5 +126,11 @@ export const api = {
   },
   addRejectTransaction: async (tx: RejectTransaction) => {
     await fetch(`${API_URL}/reject/transactions`, { method: 'POST', headers, body: JSON.stringify(tx) });
+  },
+
+  // System
+  resetDatabase: async (): Promise<{ success: boolean; message?: string; error?: string }> => {
+    const res = await fetch(`${API_URL}/system/reset`, { method: 'POST', headers });
+    return res.json();
   }
 };

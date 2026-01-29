@@ -19,22 +19,17 @@ app.use(bodyParser.urlencoded({ limit: '50mb', extended: true }));
 
 // Database Connection Pool
 const dbConfig = {
-    host: process.env.DB_HOST || '127.0.0.1',
+    host: process.env.DB_HOST || 'localhost',
     user: process.env.DB_USER,
     password: process.env.DB_PASSWORD,
     database: process.env.DB_NAME,
     waitForConnections: true,
-    connectionLimit: 20, // Menaikkan limit untuk trafik tinggi
+    connectionLimit: 10,
     queueLimit: 0,
-    timezone: '+07:00',
-    charset: 'utf8mb4',
-    connectTimeout: 20000
+    enableKeepAlive: true,
+    keepAliveInitialDelay: 0,
+    charset: 'utf8mb4'
 };
-
-// Validasi Env sebelum inisialisasi
-if (!dbConfig.user || !dbConfig.password || !dbConfig.database) {
-    console.error("FATAL: Database configuration missing in .env file!");
-}
 
 const pool = mysql.createPool(dbConfig);
 
@@ -62,9 +57,14 @@ const toCamel = (o) => {
 
 app.get('/', (req, res) => {
     res.json({
-        message: "SmartInventory API Online",
-        server_time: new Date(),
-        db_user: process.env.DB_USER
+        message: "SmartInventory API Server",
+        status: "Running",
+        config_check: {
+            user: dbConfig.user,
+            host: dbConfig.host,
+            database: dbConfig.database,
+            pass_length: dbConfig.password ? dbConfig.password.length : 0
+        }
     });
 });
 
@@ -76,20 +76,16 @@ app.get('/api/health', async (req, res) => {
         res.json({ 
             status: 'online', 
             database: 'connected', 
-            user: dbConfig.user,
-            db_name: dbConfig.database,
             timestamp: new Date() 
         });
     } catch (err) {
-        console.error("Database Health Check Error:", err.message);
+        console.error("Database Connection Error:", err.message);
         res.status(500).json({ 
             status: 'error', 
             message: 'Database connection failed', 
-            error_code: err.code,
+            code: err.code,
             details: err.message,
-            tip: err.code === 'ER_ACCESS_DENIED_ERROR' 
-                 ? "Jalankan 'GRANT ALL PRIVILEGES ON " + dbConfig.database + ".* TO \"" + dbConfig.user + "\"@\"localhost\";' di MySQL."
-                 : "Pastikan MySQL service aktif di VPS."
+            troubleshoot: "Pastikan user '" + dbConfig.user + "' diizinkan akses ke host '" + dbConfig.host + "'."
         });
     } finally {
         if (connection) connection.release();
@@ -231,6 +227,33 @@ app.post('/api/reject/transactions', async (req, res) => {
         await pool.query(sql, [tx.id, new Date(tx.date), JSON.stringify(tx.items || []), new Date()]);
         res.json({ success: true });
     } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// --- SYSTEM RESET ---
+app.post('/api/system/reset', async (req, res) => {
+    const connection = await pool.getConnection();
+    try {
+        await connection.beginTransaction();
+        
+        // Truncate tables
+        await connection.query('TRUNCATE TABLE transactions');
+        await connection.query('TRUNCATE TABLE inventory');
+        await connection.query('TRUNCATE TABLE reject_transactions');
+        await connection.query('TRUNCATE TABLE reject_master');
+        
+        // Reset users but keep default admin
+        await connection.query('DELETE FROM users');
+        await connection.query("INSERT INTO users (id, name, username, password, role, email) VALUES ('u1', 'Super Admin', 'admin', '22', 'admin', 'admin@inventory.com')");
+        
+        await connection.commit();
+        res.json({ success: true, message: "Database has been reset to factory settings." });
+    } catch (err) {
+        await connection.rollback();
+        console.error("System Reset Failed:", err);
+        res.status(500).json({ success: false, error: err.message });
+    } finally {
+        connection.release();
+    }
 });
 
 app.listen(PORT, '0.0.0.0', () => {
