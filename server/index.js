@@ -190,19 +190,34 @@ app.delete('/api/transactions/:id', async (req, res) => {
     const connection = await pool.getConnection();
     try {
         await connection.beginTransaction();
+        
+        // 1. Fetch current transaction record to know items and quantities
         const [rows] = await connection.query('SELECT * FROM transactions WHERE id = ?', [req.params.id]);
-        if (rows.length === 0) return res.status(404).json({ error: "Not found" });
+        if (rows.length === 0) return res.status(404).json({ error: "Transaction not found" });
+        
         const tx = toCamel(rows[0]);
-        const items = Array.isArray(tx.items) ? tx.items : [];
-        for (const item of items) {
-            let revertSql = tx.type === 'IN' ? 'UPDATE inventory SET stock = stock - ? WHERE id = ?' : 'UPDATE inventory SET stock = stock + ? WHERE id = ?';
+        const txItems = Array.isArray(tx.items) ? tx.items : [];
+        
+        // 2. REVERT LOGIC:
+        // If it was 'IN' (Added stock), we subtract.
+        // If it was 'OUT' (Removed stock), we add back.
+        for (const item of txItems) {
+            let revertSql = tx.type === 'IN' ? 
+                'UPDATE inventory SET stock = stock - ? WHERE id = ?' : 
+                'UPDATE inventory SET stock = stock + ? WHERE id = ?';
+            
             await connection.query(revertSql, [item.quantity, item.itemId]);
+            console.log(`Reverted item ${item.itemId} by ${item.quantity} (${tx.type === 'IN' ? '-' : '+'})`);
         }
+        
+        // 3. Delete the transaction record
         await connection.query('DELETE FROM transactions WHERE id = ?', [req.params.id]);
+        
         await connection.commit();
-        res.json({ success: true });
+        res.json({ success: true, message: "Transaction deleted and inventory balance reverted successfully." });
     } catch (err) {
         await connection.rollback();
+        console.error("Failed to delete transaction:", err);
         res.status(500).json({ error: err.message });
     } finally { connection.release(); }
 });

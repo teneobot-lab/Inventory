@@ -60,10 +60,8 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ items, onAddIt
     
     if (confirm(`Apakah Anda yakin ingin menghapus ${selectedIds.size} item secara massal? Tindakan ini tidak dapat dibatalkan.`)) {
       if (onBulkDeleteItem) {
-          // Senior approach: Use atomic bulk delete
           onBulkDeleteItem(Array.from(selectedIds));
       } else {
-          // Fallback if bulk delete not provided (less efficient)
           selectedIds.forEach(id => onDeleteItem(id));
       }
       setSelectedIds(new Set());
@@ -86,6 +84,19 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ items, onAddIt
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Safety check for manual SKU duplicates
+    const normalizedSku = formData.sku?.trim().toLowerCase();
+    const isDuplicate = items.some(item => 
+      item.sku.trim().toLowerCase() === normalizedSku && 
+      item.id !== editingItem?.id
+    );
+
+    if (isDuplicate) {
+      alert(`Gagal: SKU "${formData.sku}" sudah digunakan oleh produk lain.`);
+      return;
+    }
+
     if (editingItem) {
       onUpdateItem({ ...editingItem, ...formData } as InventoryItem);
     } else {
@@ -148,23 +159,39 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ items, onAddIt
         return;
       }
       
+      // Layer 1: Check against existing items in Database
+      const existingSkusInDb = new Set(items.map(i => i.sku.trim().toLowerCase()));
+      // Layer 2: Check against items within the SAME file
+      const processedSkusInCurrentFile = new Set();
+      
       let importedCount = 0;
+      let skippedCount = 0;
+
       for (let i = 1; i < jsonData.length; i++) {
         const row = jsonData[i];
         if (!row || row.length === 0) continue;
         
         const name = row[0] ? String(row[0]).trim() : "Unnamed Item";
-        const sku = row[1] ? String(row[1]).trim() : `AUTO-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
+        const skuInput = row[1] ? String(row[1]).trim() : `AUTO-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
         const category = row[2] ? String(row[2]).trim() : "Uncategorized";
         const stock = row[3] ? parseInt(String(row[3])) : 0;
         const minStock = row[4] ? parseInt(String(row[4])) : 0;
         const unit = row[5] ? String(row[5]).trim() : "pcs";
         const price = row[6] ? parseInt(String(row[6])) : 0;
 
+        const normalizedSku = skuInput.toLowerCase();
+
+        // ELIMINATION LOGIC:
+        if (existingSkusInDb.has(normalizedSku) || processedSkusInCurrentFile.has(normalizedSku)) {
+          console.warn(`Skipping duplicate SKU found in database or file: ${skuInput}`);
+          skippedCount++;
+          continue;
+        }
+
         const newItem: InventoryItem = {
           id: Math.random().toString(36).substr(2, 9),
           name,
-          sku,
+          sku: skuInput,
           category,
           stock: isNaN(stock) ? 0 : stock,
           minStock: isNaN(minStock) ? 0 : minStock,
@@ -175,10 +202,13 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ items, onAddIt
         };
 
         onAddItem(newItem);
+        processedSkusInCurrentFile.add(normalizedSku);
         importedCount++;
       }
       
-      alert(`Successfully imported ${importedCount} items from Excel.`);
+      const summaryMsg = `Import Selesai.\n- Berhasil: ${importedCount} item baru\n- Dilewati (SKU Sudah Ada/Duplikat): ${skippedCount} item`;
+      alert(summaryMsg);
+      
       setIsImportModalOpen(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
     };
@@ -232,7 +262,6 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ items, onAddIt
           </div>
         </div>
 
-        {/* SCROLLABLE TABLE CONTAINER */}
         <div className="overflow-auto max-h-[65vh] scrollbar-thin scrollbar-thumb-slate-200 dark:scrollbar-thumb-slate-700">
           <table className="w-full text-left text-sm text-slate-600 dark:text-slate-400 relative">
             <thead className="bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-200 uppercase text-xs font-bold sticky top-0 z-10 shadow-sm">
