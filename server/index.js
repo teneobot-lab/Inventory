@@ -10,7 +10,7 @@ const PORT = process.env.PORT || 3010;
 
 // Middleware
 app.use(cors({
-    origin: '*', // Izinkan semua origin untuk mempermudah koneksi awal
+    origin: '*',
     methods: ['GET', 'POST', 'PUT', 'DELETE'],
     allowedHeaders: ['Content-Type', 'Authorization']
 }));
@@ -18,8 +18,8 @@ app.use(bodyParser.json({ limit: '50mb' }));
 app.use(bodyParser.urlencoded({ limit: '50mb', extended: true }));
 
 // Database Connection Pool
-const pool = mysql.createPool({
-    host: process.env.DB_HOST || 'localhost',
+const dbConfig = {
+    host: process.env.DB_HOST || '127.0.0.1',
     user: process.env.DB_USER || 'root',
     password: process.env.DB_PASSWORD || '',
     database: process.env.DB_NAME || 'smart_inventory',
@@ -27,48 +27,64 @@ const pool = mysql.createPool({
     connectionLimit: 10,
     queueLimit: 0,
     timezone: '+07:00'
-});
+};
+
+const pool = mysql.createPool(dbConfig);
 
 const toCamel = (o) => {
     if (!o || typeof o !== 'object') return o;
     const newO = {};
-    
     Object.keys(o).forEach(key => {
         const newKey = key.replace(/_([a-z])/g, (g) => g[1].toUpperCase());
         let value = o[key];
-
         const jsonFields = ['conversions', 'items', 'photos'];
-        
         if (jsonFields.includes(newKey) || jsonFields.includes(key)) {
             if (typeof value === 'string') {
                 const trimmed = value.trim();
                 if (trimmed.startsWith('[') || trimmed.startsWith('{')) {
-                    try {
-                        value = JSON.parse(trimmed);
-                    } catch (e) {
-                        console.error(`JSON Parse Error for ${key}:`, e.message);
-                        value = [];
-                    }
+                    try { value = JSON.parse(trimmed); } catch (e) { value = []; }
                 }
-            } else if (value === null) {
-                value = [];
-            }
+            } else if (value === null) { value = []; }
         }
         newO[newKey] = value;
     });
     return newO;
 };
 
-// --- HEALTH CHECK ---
+// --- ROUTES ---
+
+// Root route agar tidak muncul "Cannot GET /"
+app.get('/', (req, res) => {
+    res.json({
+        message: "SmartInventory API is Running",
+        version: "1.0.0",
+        endpoint: "/api/health"
+    });
+});
+
+// Health Check dengan logging mendalam
 app.get('/api/health', async (req, res) => {
+    let connection;
     try {
-        const connection = await pool.getConnection();
+        connection = await pool.getConnection();
         await connection.ping();
-        connection.release();
-        res.json({ status: 'online', db: 'connected', timestamp: new Date() });
+        res.json({ 
+            status: 'online', 
+            database: 'connected', 
+            config_host: dbConfig.host,
+            timestamp: new Date() 
+        });
     } catch (err) {
-        console.error("Health Check Failed:", err.message);
-        res.status(500).json({ status: 'error', error: err.message });
+        console.error("Critical Database Error:", err.message);
+        res.status(500).json({ 
+            status: 'error', 
+            message: 'Database connection failed', 
+            error_code: err.code,
+            details: err.message,
+            tip: "Pastikan MySQL berjalan dan database 'smart_inventory' sudah diimport."
+        });
+    } finally {
+        if (connection) connection.release();
     }
 });
 
@@ -128,15 +144,10 @@ app.delete('/api/inventory/:id', async (req, res) => {
 
 // --- TRANSACTIONS ---
 app.get('/api/transactions', async (req, res) => {
-    let connection;
     try {
-        connection = await pool.getConnection();
-        const [rows] = await connection.query('SELECT * FROM transactions ORDER BY date DESC, id DESC');
+        const [rows] = await pool.query('SELECT * FROM transactions ORDER BY date DESC, id DESC');
         res.json(rows.map(toCamel));
-    } catch (err) { 
-        console.error("GET TRANSACTIONS ERROR:", err);
-        res.status(500).json({ success: false, error: err.message }); 
-    } finally { if (connection) connection.release(); }
+    } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 app.post('/api/transactions', async (req, res) => {
@@ -160,56 +171,12 @@ app.post('/api/transactions', async (req, res) => {
     } finally { connection.release(); }
 });
 
-app.put('/api/transactions/:id', async (req, res) => {
-    const txId = req.params.id;
-    const newTxData = req.body;
-    const connection = await pool.getConnection();
-    try {
-        await connection.beginTransaction();
-        
-        const [oldRows] = await connection.query('SELECT * FROM transactions WHERE id = ?', [txId]);
-        if (oldRows.length === 0) throw new Error("Transaction not found");
-        const oldTx = toCamel(oldRows[0]);
-
-        const oldItems = Array.isArray(oldTx.items) ? oldTx.items : [];
-        for (const item of oldItems) {
-            let revertSql = oldTx.type === 'IN' ? 'UPDATE inventory SET stock = stock - ? WHERE id = ?' : 'UPDATE inventory SET stock = stock + ? WHERE id = ?';
-            await connection.query(revertSql, [item.quantity, item.itemId]);
-        }
-
-        const updateSql = `UPDATE transactions SET date=?, reference_number=?, supplier=?, notes=?, photos=?, items=?, performer=? WHERE id=?`;
-        await connection.query(updateSql, [
-            new Date(newTxData.date), 
-            newTxData.referenceNumber || null, 
-            newTxData.supplier || null, 
-            newTxData.notes || '', 
-            JSON.stringify(newTxData.photos || []), 
-            JSON.stringify(newTxData.items || []), 
-            newTxData.performer || 'Admin',
-            txId
-        ]);
-
-        const newItems = Array.isArray(newTxData.items) ? newTxData.items : [];
-        for (const item of newItems) {
-            let applySql = oldTx.type === 'IN' ? 'UPDATE inventory SET stock = stock + ? WHERE id = ?' : 'UPDATE inventory SET stock = stock - ? WHERE id = ?';
-            await connection.query(applySql, [item.quantity, item.itemId]);
-        }
-
-        await connection.commit();
-        res.json({ success: true });
-    } catch (err) {
-        await connection.rollback();
-        res.status(500).json({ success: false, error: err.message });
-    } finally { connection.release(); }
-});
-
 app.delete('/api/transactions/:id', async (req, res) => {
     const connection = await pool.getConnection();
     try {
         await connection.beginTransaction();
         const [rows] = await connection.query('SELECT * FROM transactions WHERE id = ?', [req.params.id]);
         if (rows.length === 0) return res.status(404).json({ error: "Not found" });
-        
         const tx = toCamel(rows[0]);
         const items = Array.isArray(tx.items) ? tx.items : [];
         for (const item of items) {
@@ -242,13 +209,6 @@ app.post('/api/reject/master', async (req, res) => {
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.delete('/api/reject/master/:id', async (req, res) => {
-    try {
-        await pool.query('DELETE FROM reject_master WHERE id = ?', [req.params.id]);
-        res.json({ success: true });
-    } catch (err) { res.status(500).json({ error: err.message }); }
-});
-
 app.get('/api/reject/transactions', async (req, res) => {
     try {
         const [rows] = await pool.query('SELECT * FROM reject_transactions ORDER BY date DESC, id DESC');
@@ -265,7 +225,6 @@ app.post('/api/reject/transactions', async (req, res) => {
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// CRITICAL: Bind to 0.0.0.0 instead of default localhost
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`SmartInventory Backend is listening on 0.0.0.0:${PORT}`);
 });
