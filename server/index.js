@@ -20,16 +20,21 @@ app.use(bodyParser.urlencoded({ limit: '50mb', extended: true }));
 // Database Connection Pool
 const dbConfig = {
     host: process.env.DB_HOST || '127.0.0.1',
-    user: process.env.DB_USER || 'root',
-    password: process.env.DB_PASSWORD || '',
-    database: process.env.DB_NAME || 'smart_inventory',
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
+    database: process.env.DB_NAME,
     waitForConnections: true,
-    connectionLimit: 10,
+    connectionLimit: 20, // Menaikkan limit untuk trafik tinggi
     queueLimit: 0,
     timezone: '+07:00',
     charset: 'utf8mb4',
-    connectTimeout: 15000 // Menambah timeout untuk stabilitas di VPS
+    connectTimeout: 20000
 };
+
+// Validasi Env sebelum inisialisasi
+if (!dbConfig.user || !dbConfig.password || !dbConfig.database) {
+    console.error("FATAL: Database configuration missing in .env file!");
+}
 
 const pool = mysql.createPool(dbConfig);
 
@@ -57,10 +62,9 @@ const toCamel = (o) => {
 
 app.get('/', (req, res) => {
     res.json({
-        message: "SmartInventory API is Running",
-        version: "1.0.2",
-        db_user: process.env.DB_USER,
-        endpoint: "/api/health"
+        message: "SmartInventory API Online",
+        server_time: new Date(),
+        db_user: process.env.DB_USER
     });
 });
 
@@ -73,22 +77,19 @@ app.get('/api/health', async (req, res) => {
             status: 'online', 
             database: 'connected', 
             user: dbConfig.user,
+            db_name: dbConfig.database,
             timestamp: new Date() 
         });
     } catch (err) {
-        console.error("Critical Database Error:", err.message);
+        console.error("Database Health Check Error:", err.message);
         res.status(500).json({ 
             status: 'error', 
             message: 'Database connection failed', 
             error_code: err.code,
             details: err.message,
-            config_debug: {
-                host: dbConfig.host,
-                user: dbConfig.user,
-                database: dbConfig.database,
-                has_password: dbConfig.password !== ''
-            },
-            tip: "Cek apakah user 'angkringan_user' memiliki izin akses ke database 'smart_inventory'."
+            tip: err.code === 'ER_ACCESS_DENIED_ERROR' 
+                 ? "Jalankan 'GRANT ALL PRIVILEGES ON " + dbConfig.database + ".* TO \"" + dbConfig.user + "\"@\"localhost\";' di MySQL."
+                 : "Pastikan MySQL service aktif di VPS."
         });
     } finally {
         if (connection) connection.release();
@@ -233,5 +234,5 @@ app.post('/api/reject/transactions', async (req, res) => {
 });
 
 app.listen(PORT, '0.0.0.0', () => {
-    console.log(`SmartInventory Backend is listening on 0.0.0.0:${PORT}`);
+    console.log(`SmartInventory Backend listening on 0.0.0.0:${PORT}`);
 });
