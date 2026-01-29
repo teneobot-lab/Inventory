@@ -1,3 +1,4 @@
+
 -- Buat Database
 CREATE DATABASE IF NOT EXISTS smart_inventory;
 USE smart_inventory;
@@ -23,8 +24,8 @@ CREATE TABLE IF NOT EXISTS inventory (
     name VARCHAR(255),
     sku VARCHAR(100),
     category VARCHAR(100),
-    stock INT DEFAULT 0,
-    min_stock INT DEFAULT 0,
+    stock DECIMAL(15, 3) DEFAULT 0, -- Changed from INT to DECIMAL to support fractions (e.g. 0.5 kg)
+    min_stock DECIMAL(15, 3) DEFAULT 0, -- Changed from INT to DECIMAL
     unit VARCHAR(20),
     conversions JSON, -- Menyimpan array object konversi
     price DECIMAL(15, 2) DEFAULT 0,

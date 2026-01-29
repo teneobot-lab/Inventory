@@ -20,7 +20,7 @@ export const StockCardModal: React.FC<StockCardModalProps> = ({ item, transactio
         date: t.date,
         type: t.type,
         ref: t.referenceNumber,
-        qty: tItem?.quantity || 0,
+        qty: parseFloat(String(tItem?.quantity || 0)), // Ensure it's a number
         unit: tItem?.unit || '',
         notes: t.notes
       };
@@ -37,7 +37,8 @@ export const StockCardModal: React.FC<StockCardModalProps> = ({ item, transactio
     else totalOut += t.qty;
   });
 
-  const startingBalance = item.stock - totalIn + totalOut;
+  // Precise decimal calculation
+  const startingBalance = Number((item.stock - totalIn + totalOut).toFixed(3));
 
   // 3. Reconstruct history with running balance
   let runningBalance = startingBalance;
@@ -47,12 +48,12 @@ export const StockCardModal: React.FC<StockCardModalProps> = ({ item, transactio
     } else {
       runningBalance -= t.qty;
     }
-    return { ...t, balance: runningBalance };
+    // Fix precision issues
+    const currentBalance = Number(runningBalance.toFixed(3));
+    return { ...t, balance: currentBalance };
   });
 
-  // 4. For display, we usually want the newest at the top, 
-  // but for a "Kartu Stok" (Ledger), chronological flow (Oldest -> Newest) is better to see the balance logic.
-  // We will reverse back to Newest First for the UI table so users see the latest activity instantly.
+  // 4. Reverse back to Newest First for the UI table
   const displayHistory = [...historyWithBalance].reverse();
 
   return (
