@@ -7,13 +7,25 @@ const headers = {
   'Content-Type': 'application/json',
 };
 
+// Helper untuk handle response error
+const handleResponse = async (res: Response) => {
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    throw new Error(errorData.error || `Request failed with status ${res.status}`);
+  }
+  // Untuk DELETE atau response kosong, return null/true
+  if (res.status === 204 || res.headers.get('content-length') === '0') {
+      return true;
+  }
+  return res.json();
+};
+
 export const api = {
   checkConnection: async (): Promise<boolean> => {
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 4000);
       
-      // Request ke /api/health
       const res = await fetch(`${API_URL}/health`, { 
         method: 'GET', 
         signal: controller.signal,
@@ -47,19 +59,21 @@ export const api = {
   getInventory: async (): Promise<InventoryItem[]> => {
     try {
         const res = await fetch(`${API_URL}/inventory`);
-        if(!res.ok) return [];
-        return res.json();
+        return await handleResponse(res);
     } catch (e) { return []; }
   },
   
   addInventory: async (item: InventoryItem) => {
-    await fetch(`${API_URL}/inventory`, { method: 'POST', headers, body: JSON.stringify(item) });
+    const res = await fetch(`${API_URL}/inventory`, { method: 'POST', headers, body: JSON.stringify(item) });
+    await handleResponse(res);
   },
   updateInventory: async (item: InventoryItem) => {
-    await fetch(`${API_URL}/inventory/${item.id}`, { method: 'PUT', headers, body: JSON.stringify(item) });
+    const res = await fetch(`${API_URL}/inventory/${item.id}`, { method: 'PUT', headers, body: JSON.stringify(item) });
+    await handleResponse(res);
   },
   deleteInventory: async (id: string) => {
-    await fetch(`${API_URL}/inventory/${id}`, { method: 'DELETE' });
+    const res = await fetch(`${API_URL}/inventory/${id}`, { method: 'DELETE' });
+    await handleResponse(res);
   },
   deleteInventoryBulk: async (ids: string[]) => {
     const res = await fetch(`${API_URL}/inventory/bulk-delete`, { 
@@ -67,8 +81,7 @@ export const api = {
         headers, 
         body: JSON.stringify({ ids }) 
     });
-    if (!res.ok) throw new Error("Gagal menghapus item secara massal");
-    return res.json();
+    return await handleResponse(res);
   },
 
   // Transactions
@@ -76,11 +89,10 @@ export const api = {
     try {
         const res = await fetch(`${API_URL}/transactions`);
         if(!res.ok) {
-            const errData = await res.json().catch(() => ({}));
-            console.error("Server returned error:", res.status, errData);
+            console.error("Server returned error fetching transactions");
             return [];
         }
-        return res.json();
+        return await res.json();
     } catch (e) { 
         console.error("Network error fetching transactions:", e); 
         return []; 
@@ -88,76 +100,85 @@ export const api = {
   },
   addTransaction: async (tx: Transaction) => {
     const res = await fetch(`${API_URL}/transactions`, { method: 'POST', headers, body: JSON.stringify(tx) });
-    if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || "Gagal menyimpan transaksi");
-    }
+    await handleResponse(res);
   },
   updateTransaction: async (tx: Transaction) => {
-    await fetch(`${API_URL}/transactions/${tx.id}`, { method: 'PUT', headers, body: JSON.stringify(tx) });
+    // CRITICAL FIX: Handle Response ensures we catch 404/500 errors
+    const res = await fetch(`${API_URL}/transactions/${tx.id}`, { method: 'PUT', headers, body: JSON.stringify(tx) });
+    await handleResponse(res);
   },
   deleteTransaction: async (id: string) => {
     const res = await fetch(`${API_URL}/transactions/${id}`, { method: 'DELETE' });
-    if (!res.ok) throw new Error("Gagal menghapus transaksi");
+    await handleResponse(res);
   },
 
   // Users
   getUsers: async (): Promise<User[]> => {
     const res = await fetch(`${API_URL}/users`);
-    return res.ok ? res.json() : [];
+    return res.ok ? await res.json() : [];
   },
   addUser: async (user: User) => {
-    await fetch(`${API_URL}/users`, { method: 'POST', headers, body: JSON.stringify(user) });
+    const res = await fetch(`${API_URL}/users`, { method: 'POST', headers, body: JSON.stringify(user) });
+    await handleResponse(res);
   },
   updateUser: async (user: User) => {
-    await fetch(`${API_URL}/users/${user.id}`, { method: 'PUT', headers, body: JSON.stringify(user) });
+    const res = await fetch(`${API_URL}/users/${user.id}`, { method: 'PUT', headers, body: JSON.stringify(user) });
+    await handleResponse(res);
   },
   deleteUser: async (id: string) => {
-    await fetch(`${API_URL}/users/${id}`, { method: 'DELETE' });
+    const res = await fetch(`${API_URL}/users/${id}`, { method: 'DELETE' });
+    await handleResponse(res);
   },
 
   // Reject Master Data
   getRejectMaster: async (): Promise<RejectItem[]> => {
     const res = await fetch(`${API_URL}/reject/master`);
-    return res.ok ? res.json() : [];
+    return res.ok ? await res.json() : [];
   },
   addRejectMaster: async (item: RejectItem) => {
-    await fetch(`${API_URL}/reject/master`, { method: 'POST', headers, body: JSON.stringify(item) });
+    const res = await fetch(`${API_URL}/reject/master`, { method: 'POST', headers, body: JSON.stringify(item) });
+    await handleResponse(res);
   },
   deleteRejectMaster: async (id: string) => {
-    await fetch(`${API_URL}/reject/master/${id}`, { method: 'DELETE' });
+    const res = await fetch(`${API_URL}/reject/master/${id}`, { method: 'DELETE' });
+    await handleResponse(res);
   },
 
   // Reject Transactions
   getRejectTransactions: async (): Promise<RejectTransaction[]> => {
     const res = await fetch(`${API_URL}/reject/transactions`);
-    return res.ok ? res.json() : [];
+    return res.ok ? await res.json() : [];
   },
   addRejectTransaction: async (tx: RejectTransaction) => {
-    await fetch(`${API_URL}/reject/transactions`, { method: 'POST', headers, body: JSON.stringify(tx) });
+    const res = await fetch(`${API_URL}/reject/transactions`, { method: 'POST', headers, body: JSON.stringify(tx) });
+    await handleResponse(res);
   },
 
   // Playlists
   getPlaylists: async (): Promise<Playlist[]> => {
     const res = await fetch(`${API_URL}/playlists`);
-    return res.ok ? res.json() : [];
+    return res.ok ? await res.json() : [];
   },
   createPlaylist: async (name: string) => {
     const id = `PL-${Date.now()}`;
-    await fetch(`${API_URL}/playlists`, { method: 'POST', headers, body: JSON.stringify({ id, name }) });
+    const res = await fetch(`${API_URL}/playlists`, { method: 'POST', headers, body: JSON.stringify({ id, name }) });
+    await handleResponse(res);
   },
   deletePlaylist: async (id: string) => {
-    await fetch(`${API_URL}/playlists/${id}`, { method: 'DELETE' });
+    const res = await fetch(`${API_URL}/playlists/${id}`, { method: 'DELETE' });
+    await handleResponse(res);
   },
   getPlaylistItems: async (playlistId: string): Promise<PlaylistItem[]> => {
     const res = await fetch(`${API_URL}/playlists/${playlistId}/items`);
-    return res.ok ? res.json() : [];
+    return res.ok ? await res.json() : [];
   },
   addPlaylistItem: async (playlistId: string, item: Partial<PlaylistItem>) => {
-    await fetch(`${API_URL}/playlists/${playlistId}/items`, { method: 'POST', headers, body: JSON.stringify(item) });
+    const res = await fetch(`${API_URL}/playlists/${playlistId}/items`, { method: 'POST', headers, body: JSON.stringify(item) });
+    await handleResponse(res);
   },
   deletePlaylistItem: async (itemId: string) => {
-    await fetch(`${API_URL}/playlists/items/${itemId}`, { method: 'DELETE' });
+    const res = await fetch(`${API_URL}/playlists/items/${itemId}`, { method: 'DELETE' });
+    await handleResponse(res);
   },
 
   // System
