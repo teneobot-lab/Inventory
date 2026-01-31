@@ -33,6 +33,62 @@ const dbConfig = {
 
 const pool = mysql.createPool(dbConfig);
 
+// --- AUTO MIGRATION / INITIALIZATION ---
+// Fungsi ini akan dijalankan saat server start untuk memastikan tabel ada
+const initDatabase = async () => {
+    let connection;
+    try {
+        connection = await pool.getConnection();
+        console.log("Checking database schema...");
+
+        // 1. Create Playlists Table
+        await connection.query(`
+            CREATE TABLE IF NOT EXISTS playlists (
+                id VARCHAR(50) PRIMARY KEY,
+                name VARCHAR(100),
+                created_at DATETIME
+            )
+        `);
+
+        // 2. Create Playlist Items Table
+        await connection.query(`
+            CREATE TABLE IF NOT EXISTS playlist_items (
+                id VARCHAR(50) PRIMARY KEY,
+                playlist_id VARCHAR(50),
+                title VARCHAR(255),
+                url VARCHAR(255),
+                video_id VARCHAR(50),
+                created_at DATETIME,
+                FOREIGN KEY (playlist_id) REFERENCES playlists(id) ON DELETE CASCADE
+            )
+        `);
+
+        // Ensure other tables exist as well (Safety check)
+        await connection.query(`
+            CREATE TABLE IF NOT EXISTS users (
+                id VARCHAR(50) PRIMARY KEY,
+                name VARCHAR(100),
+                username VARCHAR(50) UNIQUE,
+                password VARCHAR(255),
+                role VARCHAR(20),
+                email VARCHAR(100)
+            )
+        `);
+
+        // Insert Default Admin if not exists
+        await connection.query(`
+            INSERT IGNORE INTO users (id, name, username, password, role, email) 
+            VALUES ('u1', 'Super Admin', 'admin', '22', 'admin', 'admin@inventory.com')
+        `);
+
+        console.log("Database schema initialized successfully.");
+    } catch (err) {
+        console.error("Database Initialization Failed:", err);
+    } finally {
+        if (connection) connection.release();
+    }
+};
+
 const toCamel = (o) => {
     if (!o || typeof o !== 'object') return o;
     const newO = {};
@@ -329,6 +385,9 @@ app.post('/api/system/reset', async (req, res) => {
     }
 });
 
-app.listen(PORT, '0.0.0.0', () => {
-    console.log(`SmartInventory Backend listening on 0.0.0.0:${PORT}`);
+// Initialize DB then Start Server
+initDatabase().then(() => {
+    app.listen(PORT, '0.0.0.0', () => {
+        console.log(`SmartInventory Backend listening on 0.0.0.0:${PORT}`);
+    });
 });
