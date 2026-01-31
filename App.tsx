@@ -381,7 +381,10 @@ const App: React.FC = () => {
                                  </div>
                               </div>
                               <div className="text-right">
-                                 <div className="text-sm font-bold text-slate-700 dark:text-slate-300">{item.stock} {item.unit}</div>
+                                 <div className="text-sm font-bold text-slate-700 dark:text-slate-300">
+                                   {/* Fixed: Remove decimal .000 by forcing Number cast and locale string */}
+                                   {Number(item.stock).toLocaleString('id-ID')} {item.unit}
+                                 </div>
                                  <div className="text-[10px] text-slate-400">Saldo Akhir</div>
                               </div>
                             </button>
@@ -487,7 +490,8 @@ const App: React.FC = () => {
                                   <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">{item.sku}</p>
                                   <div className="flex items-center gap-2 mt-2">
                                      <span className="text-xs bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 px-2 py-0.5 rounded border border-red-100 dark:border-red-900 font-medium">
-                                        Stok: {item.stock} {item.unit}
+                                        {/* Fixed: Format stock number in notification */}
+                                        Stok: {Number(item.stock).toLocaleString('id-ID')} {item.unit}
                                      </span>
                                      <span className="text-[10px] text-slate-400">
                                         Min: {item.minStock}
