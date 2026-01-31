@@ -75,7 +75,8 @@ export const StockCardModal: React.FC<StockCardModalProps> = ({ item, transactio
              <div className="text-right">
                <div className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">Saldo Saat Ini</div>
                <div className="text-3xl font-black text-slate-800 dark:text-white tracking-tighter">
-                 {item.stock} <span className="text-sm font-normal text-slate-400">{item.unit}</span>
+                 {/* FIXED: Wrap in Number() */}
+                 {Number(item.stock).toLocaleString('id-ID', { maximumFractionDigits: 3 })} <span className="text-sm font-normal text-slate-400">{item.unit}</span>
                </div>
              </div>
              <button onClick={onClose} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
@@ -102,7 +103,8 @@ export const StockCardModal: React.FC<StockCardModalProps> = ({ item, transactio
               {/* Row: Starting Balance */}
               <tr className="bg-slate-50/50 dark:bg-slate-800/30 italic">
                 <td colSpan={6} className="px-6 py-3 text-xs text-slate-400">Saldo sebelum periode riwayat ini</td>
-                <td className="px-6 py-3 text-right font-mono font-bold text-slate-400">{startingBalance}</td>
+                {/* FIXED: Wrap in Number() */}
+                <td className="px-6 py-3 text-right font-mono font-bold text-slate-400">{Number(startingBalance).toLocaleString('id-ID', { maximumFractionDigits: 3 })}</td>
               </tr>
 
               {displayHistory.map((t) => (
@@ -124,13 +126,16 @@ export const StockCardModal: React.FC<StockCardModalProps> = ({ item, transactio
                     }
                   </td>
                   <td className="px-6 py-4 text-right text-green-600 dark:text-green-400 font-bold font-mono">
-                    {t.type === 'IN' ? `+${t.qty}` : '-'}
+                    {/* FIXED: Wrap in Number() */}
+                    {t.type === 'IN' ? `+${Number(t.qty).toLocaleString('id-ID', { maximumFractionDigits: 3 })}` : '-'}
                   </td>
                   <td className="px-6 py-4 text-right text-orange-600 dark:text-orange-400 font-bold font-mono">
-                     {t.type === 'OUT' ? `-${t.qty}` : '-'}
+                     {/* FIXED: Wrap in Number() */}
+                     {t.type === 'OUT' ? `-${Number(t.qty).toLocaleString('id-ID', { maximumFractionDigits: 3 })}` : '-'}
                   </td>
                   <td className="px-6 py-4 text-right font-bold text-slate-900 dark:text-white bg-slate-100/30 dark:bg-slate-700/30 font-mono border-l dark:border-slate-800">
-                    {t.balance}
+                    {/* FIXED: Wrap in Number() */}
+                    {Number(t.balance).toLocaleString('id-ID', { maximumFractionDigits: 3 })}
                   </td>
                 </tr>
               ))}

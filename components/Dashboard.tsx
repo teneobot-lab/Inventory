@@ -134,7 +134,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ items, transactions }) => 
                                     {t.type}
                                 </span>
                             </td>
-                            <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{t.quantity} {t.unit}</td>
+                            <td className="px-4 py-3 text-slate-600 dark:text-slate-300">
+                                {/* FIXED: Wrap in Number() */}
+                                {Number(t.quantity).toLocaleString('id-ID', { maximumFractionDigits: 3 })} {t.unit}
+                            </td>
                             <td className="px-4 py-3 text-slate-500 dark:text-slate-400">{new Date(t.date).toLocaleDateString('id-ID')}</td>
                         </tr>
                     ))}

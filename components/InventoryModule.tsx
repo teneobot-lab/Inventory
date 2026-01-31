@@ -83,10 +83,10 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ items, onAddIt
         name: item.name,
         sku: item.sku,
         category: item.category,
-        stock: item.stock.toString(),
-        minStock: item.minStock.toString(),
+        stock: Number(item.stock).toString(),
+        minStock: Number(item.minStock).toString(),
         unit: item.unit,
-        price: item.price.toString(),
+        price: Number(item.price).toString(),
         conversions: item.conversions || []
       });
     } else {
@@ -326,7 +326,8 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ items, onAddIt
                   <td className="px-6 py-4 font-bold text-slate-900 dark:text-slate-100">{item.name}</td>
                   <td className="px-6 py-4 font-mono text-xs text-slate-500 dark:text-slate-400 uppercase tracking-tighter">{item.sku}</td>
                   <td className="px-6 py-4">
-                    <span className="font-bold text-slate-800 dark:text-slate-200">{item.stock}</span> <span className="text-slate-400">{item.unit}</span>
+                    {/* FIXED: Wrap in Number() to remove unnecessary decimals */}
+                    <span className="font-bold text-slate-800 dark:text-slate-200">{Number(item.stock).toLocaleString('id-ID', { maximumFractionDigits: 3 })}</span> <span className="text-slate-400">{item.unit}</span>
                   </td>
                   <td className="px-6 py-4">
                     <div className="flex flex-col text-xs text-slate-500 dark:text-slate-400">
@@ -338,7 +339,10 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ items, onAddIt
                       )}
                     </div>
                   </td>
-                  <td className="px-6 py-4 font-mono text-slate-700 dark:text-slate-300">Rp {item.price.toLocaleString('id-ID')}</td>
+                  <td className="px-6 py-4 font-mono text-slate-700 dark:text-slate-300">
+                      {/* FIXED: Properly format Price with Number() */}
+                      Rp {Number(item.price).toLocaleString('id-ID')}
+                  </td>
                   <td className="px-6 py-4">
                     {item.stock <= item.minStock ? (
                       <span className="inline-flex items-center gap-1.5 text-red-600 dark:text-red-400 font-bold text-[10px] uppercase bg-red-50 dark:bg-red-900/20 px-2 py-1 rounded-full border border-red-100 dark:border-red-900/50">
