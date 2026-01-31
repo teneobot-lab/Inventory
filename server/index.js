@@ -498,15 +498,16 @@ app.post('/api/reports/export', async (req, res) => {
                 t.items.forEach(item => {
                     if (selectedItemId !== 'ALL' && item.itemId !== selectedItemId) return;
 
-                    reportData.push([
-                        fmtDate(t.date),
-                        t.id,
-                        t.type,
-                        t.type === 'IN' ? (t.supplier || '-') : (t.referenceNumber || '-'),
-                        item.itemName,
-                        `${item.quantity} ${item.unit}`,
-                        t.notes || ''
-                    ]);
+                    // STRICT STRING CONVERSION TO PREVENT PDFKIT CRASHES
+                    reportData.push({
+                        date: fmtDate(t.date),
+                        id: String(t.id || ''),
+                        type: String(t.type || ''),
+                        ref: t.type === 'IN' ? String(t.supplier || '-') : String(t.referenceNumber || '-'),
+                        item: String(item.itemName || 'Unknown'),
+                        qty: `${item.quantity || 0} ${item.unit || ''}`,
+                        notes: String(t.notes || '')
+                    });
                 });
             });
 
@@ -522,9 +523,7 @@ app.post('/api/reports/export', async (req, res) => {
                     { label: "Qty", property: 'qty', width: 60, align: 'right' },
                     { label: "Ket", property: 'notes', width: 80 }
                 ],
-                datas: reportData.map(r => ({ 
-                    date: r[0], id: r[1], type: r[2], ref: r[3], item: r[4], qty: r[5], notes: r[6] 
-                }))
+                datas: reportData // Already objects, no mapping needed here if pushed correctly
             };
 
             if (reportData.length === 0) {
@@ -592,28 +591,39 @@ app.post('/api/reports/export', async (req, res) => {
                 };
             }).filter(Boolean);
 
+            // FIX: Use Property based mapping for Monthly Report to ensure visibility
             const table = {
                 headers: [
-                    { label: "SKU", width: 60 },
-                    { label: "Nama Barang", width: 140 },
-                    { label: "Satuan", width: 40 },
-                    { label: "Saldo Awal", width: 70, align: 'right' },
-                    { label: "Masuk (+)", width: 70, align: 'right' },
-                    { label: "Keluar (-)", width: 70, align: 'right' },
-                    { label: "Saldo Akhir", width: 80, align: 'right', headerColor: '#e2e8f0' }
+                    { label: "SKU", property: 'sku', width: 60 },
+                    { label: "Nama Barang", property: 'name', width: 140 },
+                    { label: "Satuan", property: 'unit', width: 40 },
+                    { label: "Saldo Awal", property: 'opening', width: 70, align: 'right' },
+                    { label: "Masuk (+)", property: 'in', width: 70, align: 'right' },
+                    { label: "Keluar (-)", property: 'out', width: 70, align: 'right' },
+                    { label: "Saldo Akhir", property: 'closing', width: 80, align: 'right', headerColor: '#e2e8f0' }
                 ],
-                datas: balanceRows.map(r => [
-                    r.sku, r.name, r.unit, fmtNum(r.opening), fmtNum(r.in), fmtNum(r.out), fmtNum(r.closing)
-                ])
+                datas: balanceRows.map(r => ({
+                    sku: String(r.sku || '-'),
+                    name: String(r.name || 'Unknown'),
+                    unit: String(r.unit || ''),
+                    opening: fmtNum(r.opening),
+                    in: fmtNum(r.in),
+                    out: fmtNum(r.out),
+                    closing: fmtNum(r.closing)
+                }))
             };
 
-            await doc.table(table, {
-                prepareHeader: () => doc.font("Helvetica-Bold").fontSize(8).fillColor("#1e293b"),
-                prepareRow: (row, indexColumn, indexRow, rectRow, rectCell) => {
-                    doc.font("Helvetica").fontSize(8).fillColor("#334155");
-                    if (indexRow % 2 === 0) doc.addBackground(rectRow, '#f1f5f9', 0.5);
-                },
-            });
+            if (balanceRows.length === 0) {
+                 doc.fontSize(12).fillColor('#64748b').text("Tidak ada data inventaris ditemukan.", { align: 'center' });
+            } else {
+                await doc.table(table, {
+                    prepareHeader: () => doc.font("Helvetica-Bold").fontSize(8).fillColor("#1e293b"),
+                    prepareRow: (row, indexColumn, indexRow, rectRow, rectCell) => {
+                        doc.font("Helvetica").fontSize(8).fillColor("#334155");
+                        if (indexRow % 2 === 0) doc.addBackground(rectRow, '#f1f5f9', 0.5);
+                    },
+                });
+            }
         }
 
         // --- FOOTER ---
@@ -634,7 +644,10 @@ app.post('/api/reports/export', async (req, res) => {
 
     } catch (err) {
         console.error("PDF Generation Error:", err);
-        res.status(500).json({ error: "Gagal membuat PDF. " + err.message });
+        // Do not send JSON if headers already sent via pipe, but try to log
+        if (!res.headersSent) {
+             res.status(500).json({ error: "Gagal membuat PDF. " + err.message });
+        }
     }
 });
 
