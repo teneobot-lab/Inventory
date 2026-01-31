@@ -68,6 +68,13 @@ const fmtDate = (dateStr) => {
     return new Date(dateStr).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
 };
 
+// Sanitize String for PDF (Critical Fix for Crashes)
+const cleanStr = (str) => {
+    if (str === null || str === undefined) return "";
+    // Remove newlines and trim to prevent table layout breaking
+    return String(str).replace(/(\r\n|\n|\r)/gm, " ").trim();
+};
+
 // --- AUTO MIGRATION / INITIALIZATION ---
 // Fungsi ini akan dijalankan saat server start untuk memastikan tabel ada
 const initDatabase = async () => {
@@ -257,7 +264,7 @@ app.post('/api/transactions', async (req, res) => {
     } finally { connection.release(); }
 });
 
-// UPDATE TRANSACTION ENDPOINT (NEWLY ADDED)
+// UPDATE TRANSACTION ENDPOINT
 app.put('/api/transactions/:id', async (req, res) => {
     const txId = req.params.id;
     const newTx = req.body;
@@ -266,15 +273,12 @@ app.put('/api/transactions/:id', async (req, res) => {
     try {
         await connection.beginTransaction();
 
-        // 1. Get Old Transaction to Revert Stock
         const [oldRows] = await connection.query('SELECT * FROM transactions WHERE id = ? FOR UPDATE', [txId]);
         if (oldRows.length === 0) throw new Error("Transaction not found");
         
         const oldTx = toCamel(oldRows[0]);
         const oldItems = Array.isArray(oldTx.items) ? oldTx.items : [];
 
-        // 2. Revert Old Stock (Inverse Logic)
-        // If Old was IN, we SUBTRACT. If Old was OUT, we ADD.
         for (const item of oldItems) {
             let revertSql = oldTx.type === 'IN' 
                 ? 'UPDATE inventory SET stock = stock - ? WHERE id = ?' 
@@ -282,7 +286,6 @@ app.put('/api/transactions/:id', async (req, res) => {
             await connection.query(revertSql, [item.quantity, item.itemId]);
         }
 
-        // 3. Update Transaction Details
         const updateSql = `UPDATE transactions SET date=?, reference_number=?, supplier=?, notes=?, photos=?, items=?, performer=? WHERE id=?`;
         await connection.query(updateSql, [
             new Date(newTx.date), 
@@ -295,10 +298,6 @@ app.put('/api/transactions/:id', async (req, res) => {
             txId
         ]);
 
-        // 4. Apply New Stock (Normal Logic)
-        // If New is IN, we ADD. If New is OUT, we SUBTRACT.
-        // Note: We assume transaction type (IN/OUT) cannot be changed during edit for safety, 
-        // but if it is allowed, this logic handles it because we use newTx.type
         const newItems = Array.isArray(newTx.items) ? newTx.items : [];
         for (const item of newItems) {
             let applySql = newTx.type === 'IN' 
@@ -323,26 +322,20 @@ app.delete('/api/transactions/:id', async (req, res) => {
     try {
         await connection.beginTransaction();
         
-        // 1. Fetch current transaction record to know items and quantities
         const [rows] = await connection.query('SELECT * FROM transactions WHERE id = ?', [req.params.id]);
         if (rows.length === 0) return res.status(404).json({ error: "Transaction not found" });
         
         const tx = toCamel(rows[0]);
         const txItems = Array.isArray(tx.items) ? tx.items : [];
         
-        // 2. REVERT LOGIC:
-        // If it was 'IN' (Added stock), we subtract.
-        // If it was 'OUT' (Removed stock), we add back.
         for (const item of txItems) {
             let revertSql = tx.type === 'IN' ? 
                 'UPDATE inventory SET stock = stock - ? WHERE id = ?' : 
                 'UPDATE inventory SET stock = stock + ? WHERE id = ?';
             
             await connection.query(revertSql, [item.quantity, item.itemId]);
-            console.log(`Reverted item ${item.itemId} by ${item.quantity} (${tx.type === 'IN' ? '-' : '+'})`);
         }
         
-        // 3. Delete the transaction record
         await connection.query('DELETE FROM transactions WHERE id = ?', [req.params.id]);
         
         await connection.commit();
@@ -446,7 +439,7 @@ app.post('/api/reports/export', async (req, res) => {
     try {
         // 1. Fetch Data
         const [inventoryRows] = await pool.query('SELECT * FROM inventory ORDER BY name ASC');
-        const [txRows] = await pool.query('SELECT * FROM transactions ORDER BY date ASC'); // Sort ASC for calculation logic
+        const [txRows] = await pool.query('SELECT * FROM transactions ORDER BY date ASC'); 
         
         const items = inventoryRows.map(toCamel);
         const transactions = txRows.map(toCamel);
@@ -459,31 +452,27 @@ app.post('/api/reports/export', async (req, res) => {
         res.setHeader('Content-Disposition', `attachment; filename=Laporan_${type}_${startDate}.pdf`);
         doc.pipe(res);
 
-        // --- HEADER DESIGN (Paper.id Style) ---
+        // --- HEADER DESIGN ---
         const drawHeader = () => {
-            doc.rect(0, 0, 595.28, 120).fill('#f8f9fa'); // Light grey header bg
+            doc.rect(0, 0, 595.28, 100).fill('#1e293b'); // Dark Slate Background for Header
             
-            // Company Info (Left)
-            doc.fillColor('#1e293b').fontSize(20).font('Helvetica-Bold').text("SmartInventory Pro", 30, 40);
-            doc.fontSize(9).font('Helvetica').fillColor('#64748b')
-               .text("Jalan Gudang Utama No. 123", 30, 65)
-               .text("Jakarta Selatan, 12000", 30, 78)
-               .text("support@smartinventory.com", 30, 91);
+            // Company Info (Left) - White Text
+            doc.fillColor('#FFFFFF').fontSize(22).font('Helvetica-Bold').text("SmartInventory", 30, 30);
+            doc.fontSize(10).font('Helvetica').fillColor('#cbd5e1') // Light Grey
+               .text("Jalan Gudang Utama No. 123, Jakarta Selatan", 30, 55)
+               .text("Email: support@smartinventory.com", 30, 68);
 
-            // Report Meta (Right)
-            doc.fillColor('#1e293b').fontSize(14).font('Helvetica-Bold')
-               .text(type === 'TRANSACTIONS' ? "LAPORAN MUTASI" : "SALDO STOK", 0, 40, { align: 'right', width: 535 });
+            // Report Meta (Right) - White Text
+            doc.fillColor('#FFFFFF').fontSize(16).font('Helvetica-Bold')
+               .text(type === 'TRANSACTIONS' ? "LAPORAN MUTASI" : "SALDO STOK", 0, 30, { align: 'right', width: 535 });
             
-            doc.fontSize(10).font('Helvetica').fillColor('#475569')
-               .text(`Periode: ${fmtDate(startDate)} - ${fmtDate(endDate)}`, 0, 65, { align: 'right', width: 535 });
-            
-            const filterText = filterType && filterType !== 'ALL' ? `Filter: ${filterType}` : "Filter: Semua";
-            doc.text(filterText, 0, 80, { align: 'right', width: 535 });
+            doc.fontSize(10).font('Helvetica').fillColor('#cbd5e1')
+               .text(`Periode: ${fmtDate(startDate)} - ${fmtDate(endDate)}`, 0, 55, { align: 'right', width: 535 });
         };
         
         // Initial Header
         drawHeader();
-        doc.moveDown(5); // Move past header background
+        doc.moveDown(6); // Move cursor down past the dark header
 
         // --- DATA PROCESSING ---
         
@@ -498,24 +487,22 @@ app.post('/api/reports/export', async (req, res) => {
                 t.items.forEach(item => {
                     if (selectedItemId !== 'ALL' && item.itemId !== selectedItemId) return;
 
-                    // STRICT STRING CONVERSION TO PREVENT PDFKIT CRASHES
+                    // STRICT SANITIZATION to prevent PDFKit crash
                     reportData.push({
-                        date: fmtDate(t.date),
-                        id: String(t.id || ''),
-                        type: String(t.type || ''),
-                        ref: t.type === 'IN' ? String(t.supplier || '-') : String(t.referenceNumber || '-'),
-                        item: String(item.itemName || 'Unknown'),
-                        qty: `${item.quantity || 0} ${item.unit || ''}`,
-                        notes: String(t.notes || '')
+                        date: cleanStr(fmtDate(t.date)),
+                        id: cleanStr(t.id),
+                        type: cleanStr(t.type),
+                        ref: t.type === 'IN' ? cleanStr(t.supplier) : cleanStr(t.referenceNumber),
+                        item: cleanStr(item.itemName),
+                        qty: `${cleanStr(item.quantity)} ${cleanStr(item.unit)}`,
+                        notes: cleanStr(t.notes)
                     });
                 });
             });
 
             const table = {
-                title: "",
-                subtitle: "",
                 headers: [
-                    { label: "Tanggal", property: 'date', width: 70 },
+                    { label: "Tanggal", property: 'date', width: 65 },
                     { label: "ID TX", property: 'id', width: 80 },
                     { label: "Tipe", property: 'type', width: 40 },
                     { label: "Ref / Supplier", property: 'ref', width: 90 },
@@ -523,23 +510,29 @@ app.post('/api/reports/export', async (req, res) => {
                     { label: "Qty", property: 'qty', width: 60, align: 'right' },
                     { label: "Ket", property: 'notes', width: 80 }
                 ],
-                datas: reportData // Already objects, no mapping needed here if pushed correctly
+                datas: reportData 
             };
 
             if (reportData.length === 0) {
                 doc.fontSize(12).fillColor('#64748b').text("Tidak ada transaksi pada periode ini.", { align: 'center' });
             } else {
                 await doc.table(table, {
-                    prepareHeader: () => doc.font("Helvetica-Bold").fontSize(8).fillColor("#1e293b"),
+                    // Header: White Text on Dark Background
+                    prepareHeader: () => doc.font("Helvetica-Bold").fontSize(8).fillColor("#FFFFFF"),
                     prepareRow: (row, indexColumn, indexRow, rectRow, rectCell) => {
-                        doc.font("Helvetica").fontSize(8).fillColor("#334155");
-                        if (indexRow % 2 === 0) doc.addBackground(rectRow, '#f1f5f9', 0.5);
+                        // Content: Black Text
+                        doc.font("Helvetica").fontSize(8).fillColor("#000000");
+                        
+                        // Zebra Striping: Light Grey (#F1F5F9) for even rows
+                        if (indexRow % 2 === 0) {
+                            doc.addBackground(rectRow, '#F1F5F9', 1); 
+                        }
                     },
                 });
             }
 
         } else {
-            // --- LOGIC: MONTHLY BALANCE (ACCOUNTING STYLE) ---
+            // --- LOGIC: MONTHLY BALANCE ---
             const periodStart = new Date(startDate);
             const periodEnd = new Date(endDate);
             
@@ -581,17 +574,16 @@ app.post('/api/reports/export', async (req, res) => {
                 if (selectedItemId !== 'ALL' && item.id !== selectedItemId) return null;
 
                 return {
-                    name: item.name,
-                    sku: item.sku,
-                    unit: item.unit,
-                    opening: openingBalance,
-                    in: totalInPeriod,
-                    out: totalOutPeriod,
-                    closing: closingBalance
+                    sku: cleanStr(item.sku),
+                    name: cleanStr(item.name),
+                    unit: cleanStr(item.unit),
+                    opening: fmtNum(openingBalance),
+                    in: fmtNum(totalInPeriod),
+                    out: fmtNum(totalOutPeriod),
+                    closing: fmtNum(closingBalance)
                 };
             }).filter(Boolean);
 
-            // FIX: Use Property based mapping for Monthly Report to ensure visibility
             const table = {
                 headers: [
                     { label: "SKU", property: 'sku', width: 60 },
@@ -600,27 +592,25 @@ app.post('/api/reports/export', async (req, res) => {
                     { label: "Saldo Awal", property: 'opening', width: 70, align: 'right' },
                     { label: "Masuk (+)", property: 'in', width: 70, align: 'right' },
                     { label: "Keluar (-)", property: 'out', width: 70, align: 'right' },
-                    { label: "Saldo Akhir", property: 'closing', width: 80, align: 'right', headerColor: '#e2e8f0' }
+                    { label: "Saldo Akhir", property: 'closing', width: 80, align: 'right' }
                 ],
-                datas: balanceRows.map(r => ({
-                    sku: String(r.sku || '-'),
-                    name: String(r.name || 'Unknown'),
-                    unit: String(r.unit || ''),
-                    opening: fmtNum(r.opening),
-                    in: fmtNum(r.in),
-                    out: fmtNum(r.out),
-                    closing: fmtNum(r.closing)
-                }))
+                datas: balanceRows
             };
 
             if (balanceRows.length === 0) {
                  doc.fontSize(12).fillColor('#64748b').text("Tidak ada data inventaris ditemukan.", { align: 'center' });
             } else {
                 await doc.table(table, {
-                    prepareHeader: () => doc.font("Helvetica-Bold").fontSize(8).fillColor("#1e293b"),
+                    // Header: White Text on Dark Background
+                    prepareHeader: () => doc.font("Helvetica-Bold").fontSize(8).fillColor("#FFFFFF"),
                     prepareRow: (row, indexColumn, indexRow, rectRow, rectCell) => {
-                        doc.font("Helvetica").fontSize(8).fillColor("#334155");
-                        if (indexRow % 2 === 0) doc.addBackground(rectRow, '#f1f5f9', 0.5);
+                        // Content: Black Text
+                        doc.font("Helvetica").fontSize(8).fillColor("#000000");
+                        
+                        // Zebra Striping: Light Grey (#F1F5F9) for even rows
+                        if (indexRow % 2 === 0) {
+                            doc.addBackground(rectRow, '#F1F5F9', 1);
+                        }
                     },
                 });
             }
@@ -644,7 +634,6 @@ app.post('/api/reports/export', async (req, res) => {
 
     } catch (err) {
         console.error("PDF Generation Error:", err);
-        // Do not send JSON if headers already sent via pipe, but try to log
         if (!res.headersSent) {
              res.status(500).json({ error: "Gagal membuat PDF. " + err.message });
         }
