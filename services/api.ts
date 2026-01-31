@@ -1,5 +1,5 @@
 
-import { InventoryItem, Transaction, User, RejectItem, RejectTransaction } from '../types';
+import { InventoryItem, Transaction, User, RejectItem, RejectTransaction, Playlist, PlaylistItem } from '../types';
 
 const API_URL = '/api';
 
@@ -135,6 +135,29 @@ export const api = {
   },
   addRejectTransaction: async (tx: RejectTransaction) => {
     await fetch(`${API_URL}/reject/transactions`, { method: 'POST', headers, body: JSON.stringify(tx) });
+  },
+
+  // Playlists
+  getPlaylists: async (): Promise<Playlist[]> => {
+    const res = await fetch(`${API_URL}/playlists`);
+    return res.ok ? res.json() : [];
+  },
+  createPlaylist: async (name: string) => {
+    const id = `PL-${Date.now()}`;
+    await fetch(`${API_URL}/playlists`, { method: 'POST', headers, body: JSON.stringify({ id, name }) });
+  },
+  deletePlaylist: async (id: string) => {
+    await fetch(`${API_URL}/playlists/${id}`, { method: 'DELETE' });
+  },
+  getPlaylistItems: async (playlistId: string): Promise<PlaylistItem[]> => {
+    const res = await fetch(`${API_URL}/playlists/${playlistId}/items`);
+    return res.ok ? res.json() : [];
+  },
+  addPlaylistItem: async (playlistId: string, item: Partial<PlaylistItem>) => {
+    await fetch(`${API_URL}/playlists/${playlistId}/items`, { method: 'POST', headers, body: JSON.stringify(item) });
+  },
+  deletePlaylistItem: async (itemId: string) => {
+    await fetch(`${API_URL}/playlists/items/${itemId}`, { method: 'DELETE' });
   },
 
   // System

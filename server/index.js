@@ -255,6 +255,53 @@ app.post('/api/reject/transactions', async (req, res) => {
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// --- PLAYLIST / MEDIA PLAYER ---
+app.get('/api/playlists', async (req, res) => {
+    try {
+        const [rows] = await pool.query('SELECT * FROM playlists ORDER BY created_at ASC');
+        res.json(rows.map(toCamel));
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/playlists', async (req, res) => {
+    const { id, name } = req.body;
+    try {
+        await pool.query('INSERT INTO playlists (id, name, created_at) VALUES (?, ?, ?)', [id, name, new Date()]);
+        res.json({ success: true });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.delete('/api/playlists/:id', async (req, res) => {
+    try {
+        await pool.query('DELETE FROM playlists WHERE id = ?', [req.params.id]);
+        res.json({ success: true });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/playlists/:id/items', async (req, res) => {
+    try {
+        const [rows] = await pool.query('SELECT * FROM playlist_items WHERE playlist_id = ? ORDER BY created_at ASC', [req.params.id]);
+        res.json(rows.map(toCamel));
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/playlists/:id/items', async (req, res) => {
+    const { id, title, url, videoId } = req.body;
+    try {
+        await pool.query('INSERT INTO playlist_items (id, playlist_id, title, url, video_id, created_at) VALUES (?, ?, ?, ?, ?, ?)', 
+            [id, req.params.id, title, url, videoId, new Date()]);
+        res.json({ success: true });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.delete('/api/playlists/items/:itemId', async (req, res) => {
+    try {
+        await pool.query('DELETE FROM playlist_items WHERE id = ?', [req.params.itemId]);
+        res.json({ success: true });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+
 // --- SYSTEM RESET ---
 app.post('/api/system/reset', async (req, res) => {
     const connection = await pool.getConnection();

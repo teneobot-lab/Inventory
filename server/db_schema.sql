@@ -62,3 +62,21 @@ CREATE TABLE IF NOT EXISTS reject_transactions (
     items JSON,
     created_at DATETIME
 );
+
+-- 6. Tabel Playlists (Media Player)
+CREATE TABLE IF NOT EXISTS playlists (
+    id VARCHAR(50) PRIMARY KEY,
+    name VARCHAR(100),
+    created_at DATETIME
+);
+
+-- 7. Tabel Playlist Items (Media Player Songs)
+CREATE TABLE IF NOT EXISTS playlist_items (
+    id VARCHAR(50) PRIMARY KEY,
+    playlist_id VARCHAR(50),
+    title VARCHAR(255),
+    url VARCHAR(255),
+    video_id VARCHAR(50),
+    created_at DATETIME,
+    FOREIGN KEY (playlist_id) REFERENCES playlists(id) ON DELETE CASCADE
+);
