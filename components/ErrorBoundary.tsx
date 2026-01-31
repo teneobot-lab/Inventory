@@ -1,5 +1,5 @@
 
-import React, { Component, ErrorInfo, ReactNode } from 'react';
+import React, { ErrorInfo, ReactNode } from 'react';
 import { AlertTriangle, RefreshCw, Home, Copy } from 'lucide-react';
 
 interface Props {
@@ -18,25 +18,22 @@ interface State {
 /**
  * ErrorBoundary class component to catch rendering errors in the component tree.
  */
-// Fix: Inherit from Component<Props, State> to ensure TypeScript correctly resolves inherited members like this.state, this.props, and this.setState
-export class ErrorBoundary extends Component<Props, State> {
-  // Fix: Explicit constructor for initializing state in the class component
-  constructor(props: Props) {
-    super(props);
-    this.state = {
-      hasError: false,
-      error: null,
-      errorInfo: null,
-    };
-  }
+// Inherit from React.Component<Props, State> to ensure TypeScript correctly resolves inherited members like this.state, this.props, and this.setState
+export class ErrorBoundary extends React.Component<Props, State> {
+  // Use class property initialization for state to ensure it's recognized by the TypeScript compiler
+  public state: State = {
+    hasError: false,
+    error: null,
+    errorInfo: null,
+  };
 
-  // Fix: Static method for handling error state derivation
+  // Static method for handling error state derivation
   public static getDerivedStateFromError(error: Error): State {
     // Update state so the next render will show the fallback UI.
     return { hasError: true, error, errorInfo: null };
   }
 
-  // Fix: Lifecycle method to capture error information and update component state
+  // Lifecycle method to capture error information and update component state
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     // Log the error to console for debugging
     console.error("Uncaught error:", error, errorInfo);
@@ -52,7 +49,7 @@ export class ErrorBoundary extends Component<Props, State> {
   };
 
   private handleCopyError = () => {
-    // Fix: Access state property from the class instance to retrieve error details
+    // Access state property from the class instance to retrieve error details
     if (this.state.error) {
         const errorDetails = `${this.state.error.toString()}\n${this.state.errorInfo?.componentStack || ''}`;
         navigator.clipboard.writeText(errorDetails);
@@ -60,7 +57,7 @@ export class ErrorBoundary extends Component<Props, State> {
     }
   };
 
-  // Fix: Render method that correctly accesses this.state and this.props from the inherited class
+  // Render method that correctly accesses this.state and this.props from the inherited class
   public render() {
     if (this.state.hasError) {
       return (
