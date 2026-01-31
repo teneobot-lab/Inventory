@@ -28,12 +28,10 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({ isOpen, onClose, onPla
   const [errorMsg, setErrorMsg] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
-  // Load Playlists on Open
+  // Load Playlists on Mount (once) instead of on Open, to ensure data is ready
   useEffect(() => {
-    if (isOpen) {
-      loadPlaylists();
-    }
-  }, [isOpen]);
+    loadPlaylists();
+  }, []);
 
   // Load Items when Playlist changes
   useEffect(() => {
@@ -178,14 +176,27 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({ isOpen, onClose, onPla
   }, [isPlaying, onPlayingChange]);
 
   // Render Logic
-  if (!isOpen) return null;
+  // CRITICAL CHANGE: We do NOT return null here. We keep the component mounted but hidden via CSS.
+  // This allows the iframe to keep playing in the background.
 
   const currentVideo = items[currentIndex];
   const origin = typeof window !== 'undefined' ? window.location.origin : '';
 
   return (
-    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-center justify-center p-4 animate-fade-in">
-      <div className="bg-slate-900 rounded-2xl shadow-2xl w-full max-w-5xl h-[600px] flex overflow-hidden border border-slate-700 animate-scale-in">
+    <div 
+        className={`fixed inset-0 z-[100] flex items-center justify-center p-4 transition-all duration-300 ${
+            isOpen 
+             ? 'opacity-100 visible pointer-events-auto' 
+             : 'opacity-0 invisible pointer-events-none'
+        }`}
+    >
+      {/* Backdrop with Click Handler to Close */}
+      <div 
+        className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+        onClick={onClose}
+      ></div>
+
+      <div className={`bg-slate-900 rounded-2xl shadow-2xl w-full max-w-5xl h-[600px] flex overflow-hidden border border-slate-700 relative z-10 transition-transform duration-300 ${isOpen ? 'scale-100' : 'scale-95'}`}>
         
         {/* LEFT PANEL: PLAYER (40%) */}
         <div className="w-2/5 bg-black flex flex-col relative border-r border-slate-800">
