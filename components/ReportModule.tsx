@@ -1,10 +1,8 @@
 
 import React, { useState, useMemo } from 'react';
 import { InventoryItem, Transaction } from '../types';
-import { FileText, FileSpreadsheet, Search, Filter, Calendar, Download, RefreshCw, Layers, Calculator } from 'lucide-react';
+import { FileText, FileSpreadsheet, Search, Filter, Calendar, Download, RefreshCw, Layers, Calculator, Loader2 } from 'lucide-react';
 import * as XLSX from 'xlsx';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
 
 interface ReportModuleProps {
   items: InventoryItem[];
@@ -45,6 +43,9 @@ export const ReportModule: React.FC<ReportModuleProps> = ({ items, transactions 
   const [endDate, setEndDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [filterType, setFilterType] = useState<'ALL' | 'IN' | 'OUT'>('ALL');
   const [selectedItemId, setSelectedItemId] = useState<string>('ALL');
+  
+  // Loading State
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
 
   // Logic to flatten transactions (Item Level Granularity)
   const filteredData = useMemo(() => {
@@ -84,9 +85,6 @@ export const ReportModule: React.FC<ReportModuleProps> = ({ items, transactions 
     return items.map(item => {
       // 1. Calculate transactions BEFORE the period to find Opening Balance
       // Opening = Current - (TotalIn_After_Start) + (TotalOut_After_Start)
-      // This is dynamic. 
-      // Actually, standard way is: StartBalance = Initial + sum(in_before) - sum(out_before)
-      // Since we don't have a "historical snapshots" table, we work backwards from the current stock.
       
       let inAfterStart = 0;
       let outAfterStart = 0;
@@ -153,24 +151,40 @@ export const ReportModule: React.FC<ReportModuleProps> = ({ items, transactions 
     }
   };
 
-  const handleExportPDF = () => {
-    const doc = new jsPDF();
-    doc.setFontSize(16);
-    doc.text(activeTab === 'TRANSACTIONS' ? "Laporan Transaksi Barang" : "Laporan Saldo Stok Bulanan", 14, 15);
-    doc.setFontSize(10);
-    doc.text(`Periode: ${startDate} s/d ${endDate}`, 14, 22);
-    
-    if (activeTab === 'TRANSACTIONS') {
-        const tableColumn = ["Tanggal", "Tipe", "Ref/Supp", "Barang", "Qty", "Satuan", "Ket"];
-        const tableRows = filteredData.map(d => [d.date, d.type, d.type === 'IN' ? d.supplier : d.reference, d.itemName, d.quantity, d.unit, d.notes]);
-        autoTable(doc, { head: [tableColumn], body: tableRows, startY: 30 });
-    } else {
-        const tableColumn = ["Barang", "SKU", "Awal", "Masuk (+)", "Keluar (-)", "Akhir", "Unit"];
-        const tableRows = monthlyBalances.map(b => [b.itemName, b.sku, b.openingBalance, b.totalIn, b.totalOut, b.closingBalance, b.unit]);
-        autoTable(doc, { head: [tableColumn], body: tableRows, startY: 30 });
-    }
+  const handleExportPDF = async () => {
+    setIsGeneratingPdf(true);
+    try {
+        const response = await fetch('/api/reports/export', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                startDate,
+                endDate,
+                type: activeTab, // 'TRANSACTIONS' or 'MONTHLY'
+                filterType,
+                selectedItemId
+            })
+        });
 
-    doc.save(`Laporan_${activeTab}_${startDate}.pdf`);
+        if (!response.ok) throw new Error("Gagal generate PDF dari server");
+
+        // Convert response to Blob and Trigger Download
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `Laporan_Resmi_${activeTab}_${startDate}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+
+    } catch (error: any) {
+        console.error(error);
+        alert("Gagal mengunduh laporan PDF: " + error.message);
+    } finally {
+        setIsGeneratingPdf(false);
+    }
   };
 
   const handleResetFilters = () => {
@@ -254,8 +268,13 @@ export const ReportModule: React.FC<ReportModuleProps> = ({ items, transactions 
                <span className="text-slate-400 dark:text-slate-500 font-normal ml-2">[{activeTab === 'TRANSACTIONS' ? filteredData.length : monthlyBalances.length} items]</span>
             </div>
             <div className="flex gap-3 w-full sm:w-auto">
-               <button onClick={handleExportPDF} className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-red-600 hover:bg-red-700 text-white px-5 py-2.5 rounded-xl text-sm font-bold transition-all shadow-lg shadow-red-200 dark:shadow-none active:scale-95">
-                 <FileText size={18} /> PDF
+               <button 
+                  onClick={handleExportPDF} 
+                  disabled={isGeneratingPdf}
+                  className={`flex-1 sm:flex-none flex items-center justify-center gap-2 text-white px-5 py-2.5 rounded-xl text-sm font-bold transition-all shadow-lg active:scale-95 ${isGeneratingPdf ? 'bg-slate-400 cursor-not-allowed' : 'bg-red-600 hover:bg-red-700 shadow-red-200 dark:shadow-none'}`}
+               >
+                 {isGeneratingPdf ? <Loader2 size={18} className="animate-spin" /> : <FileText size={18} />}
+                 {isGeneratingPdf ? 'Generating...' : 'PDF Resmi'}
                </button>
                <button onClick={handleExportExcel} className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-green-600 hover:bg-green-700 text-white px-5 py-2.5 rounded-xl text-sm font-bold transition-all shadow-lg shadow-green-200 dark:shadow-none active:scale-95">
                  <FileSpreadsheet size={18} /> EXCEL
