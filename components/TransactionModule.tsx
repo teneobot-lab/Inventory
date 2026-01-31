@@ -482,8 +482,9 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
                                   <div className="font-bold">{item.name}</div>
                                   <div className={`text-[10px] ${idx === highlightedIndex ? 'text-blue-100' : 'text-slate-400'}`}>{item.sku}</div>
                                 </div>
+                                {/* Fixed: Number formatting using toLocaleString */}
                                 <div className={`text-xs font-bold px-2 py-1 rounded ${idx === highlightedIndex ? 'bg-blue-500' : 'bg-slate-100 dark:bg-slate-700'}`}>
-                                  {item.stock} {item.unit}
+                                  {Number(item.stock).toLocaleString('id-ID')} {item.unit}
                                 </div>
                               </div>
                             ))}
@@ -534,8 +535,9 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
                             <div className="text-[10px] text-slate-400 font-mono">{item.sku}</div>
                         </td>
                         <td className="px-4 py-3">
+                           {/* Fixed: Number formatting in Cart */}
                            <span className="font-bold text-slate-900 dark:text-white bg-blue-50 dark:bg-blue-900/20 px-2 py-1 rounded">
-                             {item.quantity} {item.unit}
+                             {Number(item.quantity).toLocaleString('id-ID')} {item.unit}
                            </span>
                         </td>
                         <td className="px-4 py-3 text-right">
