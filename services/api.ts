@@ -139,6 +139,10 @@ export const api = {
     const res = await fetch(`${API_URL}/reject/master`, { method: 'POST', headers, body: JSON.stringify(item) });
     await handleResponse(res);
   },
+  updateRejectMaster: async (item: RejectItem) => {
+    const res = await fetch(`${API_URL}/reject/master/${item.id}`, { method: 'PUT', headers, body: JSON.stringify(item) });
+    await handleResponse(res);
+  },
   deleteRejectMaster: async (id: string) => {
     const res = await fetch(`${API_URL}/reject/master/${id}`, { method: 'DELETE' });
     await handleResponse(res);

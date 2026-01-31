@@ -178,6 +178,10 @@ const App: React.FC = () => {
     await api.addRejectMaster(item);
     refreshData();
   };
+  const handleUpdateRejectItem = async (item: RejectItem) => {
+    await api.updateRejectMaster(item);
+    refreshData();
+  };
   const handleDeleteRejectItem = async (id: string) => {
       if(confirm('Hapus master barang reject ini?')) {
         await api.deleteRejectMaster(id);
@@ -583,6 +587,7 @@ const App: React.FC = () => {
                 <RejectMasterData 
                     items={rejectItems} 
                     onAddItem={handleAddRejectItem} 
+                    onUpdateItem={handleUpdateRejectItem}
                     onDeleteItem={handleDeleteRejectItem} 
                 />
             )}

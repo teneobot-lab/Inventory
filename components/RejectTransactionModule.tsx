@@ -1,3 +1,4 @@
+
 import React, { useState, useRef } from 'react';
 import { RejectItem, RejectTransaction, RejectTransactionItem } from '../types';
 import { Search, Plus, Trash2, Save, ShoppingCart, Calendar, CheckCircle, Download, FileSpreadsheet } from 'lucide-react';
@@ -100,22 +101,6 @@ export const RejectTransactionModule: React.FC<RejectTransactionModuleProps> = (
     }
   };
 
-  const handleKeyDownQty = (e: React.KeyboardEvent) => {
-      if (e.key === 'Enter') {
-          // If reason is empty, maybe focus there? But prompt says "enter in qty -> barang masuk keranjang"
-          // However, for reject, reason is mandatory. 
-          // Let's assume for rapid input flow, user tabs to Reason or we might need to skip reason?
-          // The prompt says "filed ada date picker search bar unit qty dan alasan reject".
-          // If strict keyboard flow: Search -> Qty -> Reason -> Add.
-          // But prompt says "enter di qty, barang masuk keranjang". 
-          // I will make it: Enter Qty -> Focus Reason. Enter Reason -> Add to Cart -> Focus Search.
-          // Or if Reason is filled (or optional flow), direct add.
-          // Since Reason is required, let's focus Reason on Qty Enter.
-          // WAIT: prompt says "enter di qty,barang masuk keranjang,fokus pindah ke searchbar lagi".
-          // I will follow prompt. If reason is empty, I'll use default dash "-".
-      }
-  };
-
   const handleKeyDownReason = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
         e.preventDefault();
@@ -126,7 +111,7 @@ export const RejectTransactionModule: React.FC<RejectTransactionModuleProps> = (
   // -- XLSX Template --
   const handleDownloadTemplate = () => {
       const headers = ["SKU", "Nama Barang", "Qty", "Satuan", "Alasan"];
-      const sample = ["REJ-001", "Barang Rusak", 5, "pcs", "Rusak pengiriman"];
+      const sample = ["REJ-001", "Barang Rusak", 5.5, "pcs", "Rusak pengiriman"];
       const ws = XLSX.utils.aoa_to_sheet([headers, sample]);
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, "Template Reject");
@@ -182,7 +167,7 @@ export const RejectTransactionModule: React.FC<RejectTransactionModuleProps> = (
             itemId: matched.id,
             itemName: matched.name,
             sku: matched.sku,
-            quantity: qty, // Assuming base unit for import simplicity or add conversion logic if matched has it
+            quantity: qty, 
             inputQuantity: qty,
             inputUnit: unit,
             reason: reasonStr
@@ -288,16 +273,16 @@ export const RejectTransactionModule: React.FC<RejectTransactionModuleProps> = (
                             <label className="text-xs font-semibold text-slate-500 mb-1 block">Jumlah (Qty)</label>
                             <input 
                                 ref={qtyInputRef}
-                                type="number" 
-                                placeholder="0"
-                                className="w-full px-3 py-2 border rounded-lg text-sm outline-none"
+                                type="number"
+                                step="any" 
+                                placeholder="0.0"
+                                className="w-full px-3 py-2 border rounded-lg text-sm outline-none font-bold"
                                 value={inputQty}
                                 onChange={e => setInputQty(e.target.value)}
                                 // On Enter in Qty, focus Reason
                                 onKeyDown={(e) => {
                                     if(e.key === 'Enter') {
                                         e.preventDefault();
-                                        // Focus reason logic or add logic if reason not empty
                                         const reasonEl = document.getElementById('reason-input');
                                         reasonEl?.focus();
                                     }
@@ -381,10 +366,10 @@ export const RejectTransactionModule: React.FC<RejectTransactionModuleProps> = (
                                         <div className="text-xs text-slate-400 font-mono">{item.sku}</div>
                                     </td>
                                     <td className="px-4 py-3 font-medium text-slate-700">
-                                        {item.inputQuantity} {item.inputUnit}
+                                        {Number(item.inputQuantity).toLocaleString('id-ID')} {item.inputUnit}
                                     </td>
                                     <td className="px-4 py-3 text-slate-500 text-xs">
-                                        {item.quantity} {masterItems.find(m => m.id === item.itemId)?.baseUnit}
+                                        {parseFloat(item.quantity.toFixed(3))} {masterItems.find(m => m.id === item.itemId)?.baseUnit}
                                     </td>
                                     <td className="px-4 py-3 text-xs italic max-w-[150px] truncate">{item.reason}</td>
                                     <td className="px-4 py-3 text-right">

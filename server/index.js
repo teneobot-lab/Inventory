@@ -364,6 +364,15 @@ app.post('/api/reject/master', async (req, res) => {
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+app.put('/api/reject/master/:id', async (req, res) => {
+    const item = req.body;
+    try {
+        const sql = `UPDATE reject_master SET name=?, sku=?, category=?, base_unit=?, conversions=? WHERE id=?`;
+        await pool.query(sql, [item.name, item.sku, item.category, item.baseUnit, JSON.stringify(item.conversions || []), req.params.id]);
+        res.json({ success: true });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 app.get('/api/reject/transactions', async (req, res) => {
     try {
         const [rows] = await pool.query('SELECT * FROM reject_transactions ORDER BY date DESC, id DESC');

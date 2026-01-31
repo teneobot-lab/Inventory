@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { RejectTransaction, RejectItem } from '../types';
 import { Search, Clipboard, FileSpreadsheet, Download } from 'lucide-react';
@@ -24,10 +25,6 @@ export const RejectHistory: React.FC<RejectHistoryProps> = ({ transactions, mast
     let text = `Data reject KKL ${ddmmyy}\n`;
     
     filteredTransactions.forEach(t => {
-        // Only include items from transaction matching current date if strictly following "ddmmyy", 
-        // but typically user wants to copy what's filtered/visible. 
-        // Let's assume we copy all *visible* filtered transactions or just group by date.
-        // For simplicity based on prompt: list items linearly.
         t.items.forEach(item => {
             text += `- ${item.itemName} ${item.inputQuantity} ${item.inputUnit} ${item.reason}\n`;
         });
@@ -71,7 +68,11 @@ export const RejectHistory: React.FC<RejectHistoryProps> = ({ transactions, mast
     // 3. Build Array of Arrays for XLSX
     const headerRow = ["Kode Barang", "Nama Barang", "Satuan", ...uniqueDates];
     const dataRows = Object.values(matrix).map(row => {
-        const dateValues = uniqueDates.map(d => row.dateQtys[d] || 0);
+        const dateValues = uniqueDates.map(d => {
+            const val = row.dateQtys[d] || 0;
+            // Round to 1 decimal place if it has decimals, then convert back to Number to avoid Excel warning about text numbers
+            return Number(val.toFixed(1)); 
+        });
         return [row.sku, row.name, row.unit, ...dateValues];
     });
 
@@ -137,8 +138,8 @@ export const RejectHistory: React.FC<RejectHistoryProps> = ({ transactions, mast
                                              </td>
                                          )}
                                          <td className="px-4 py-3 font-medium">{item.itemName}</td>
-                                         <td className="px-4 py-3">{item.inputQuantity} {item.inputUnit}</td>
-                                         <td className="px-4 py-3 text-slate-400 text-xs">{item.quantity} {masterItems.find(m=>m.id === item.itemId)?.baseUnit}</td>
+                                         <td className="px-4 py-3">{Number(item.inputQuantity).toLocaleString('id-ID')} {item.inputUnit}</td>
+                                         <td className="px-4 py-3 text-slate-400 text-xs">{parseFloat(item.quantity.toFixed(3))} {masterItems.find(m=>m.id === item.itemId)?.baseUnit}</td>
                                          <td className="px-4 py-3 italic text-slate-500">{item.reason}</td>
                                      </tr>
                                  ))}

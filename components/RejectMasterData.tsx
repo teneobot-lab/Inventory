@@ -1,17 +1,26 @@
+
 import React, { useState, useRef } from 'react';
 import { RejectItem, InventoryUnitConversion } from '../types';
-import { Plus, Search, Trash2, Upload, X, Save, FileSpreadsheet, PlusCircle } from 'lucide-react';
+import { Plus, Search, Trash2, Edit, Upload, X, Save, FileSpreadsheet, PlusCircle } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
 interface RejectMasterDataProps {
   items: RejectItem[];
   onAddItem: (item: RejectItem) => void;
+  onUpdateItem: (item: RejectItem) => void; // Added for edit capability
   onDeleteItem: (id: string) => void;
 }
 
-export const RejectMasterData: React.FC<RejectMasterDataProps> = ({ items, onAddItem, onDeleteItem }) => {
+// Extended interface for UI state to handle "Operator" choice
+interface UIConversion extends InventoryUnitConversion {
+    operator: '*' | '/';
+    inputValue: number;
+}
+
+export const RejectMasterData: React.FC<RejectMasterDataProps> = ({ items, onAddItem, onUpdateItem, onDeleteItem }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingItem, setEditingItem] = useState<RejectItem | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Form State
@@ -19,45 +28,83 @@ export const RejectMasterData: React.FC<RejectMasterDataProps> = ({ items, onAdd
     name: '', sku: '', category: '', baseUnit: 'KG', conversions: []
   });
 
+  // UI State for conversions (to handle * or / logic before saving as factor)
+  const [uiConversions, setUiConversions] = useState<UIConversion[]>([]);
+
   const filteredItems = items.filter(item => 
     item.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
     item.sku.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   // --- CRUD Logic ---
-  const handleOpenModal = () => {
-    setFormData({ name: '', sku: '', category: '', baseUnit: 'KG', conversions: [] });
+  const handleOpenModal = (item?: RejectItem) => {
+    if (item) {
+        setEditingItem(item);
+        setFormData({ ...item });
+        // Transform existing factors back to UI state
+        // If factor >= 1, assume multiplication (Operator: *). Value = factor.
+        // If factor < 1, assume division (Operator: /). Value = 1 / factor.
+        const uiConvs: UIConversion[] = (item.conversions || []).map(c => {
+            const isMultiply = c.factor >= 1;
+            return {
+                ...c,
+                operator: isMultiply ? '*' : '/',
+                inputValue: isMultiply ? c.factor : parseFloat((1 / c.factor).toFixed(4))
+            };
+        });
+        setUiConversions(uiConvs);
+    } else {
+        setEditingItem(null);
+        setFormData({ name: '', sku: '', category: '', baseUnit: 'KG', conversions: [] });
+        setUiConversions([]);
+    }
     setIsModalOpen(true);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onAddItem({
+    
+    // Transform UI Conversions back to Standard conversions
+    const finalConversions: InventoryUnitConversion[] = uiConversions.map(c => ({
+        name: c.name,
+        // If *, factor = value. If /, factor = 1/value.
+        factor: c.operator === '*' ? c.inputValue : (c.inputValue !== 0 ? 1 / c.inputValue : 0)
+    }));
+
+    const payload = {
       ...formData,
-      id: `REJ-${Date.now()}`,
-    } as RejectItem);
+      conversions: finalConversions
+    } as RejectItem;
+
+    if (editingItem) {
+        onUpdateItem(payload);
+    } else {
+        onAddItem({
+          ...payload,
+          id: `REJ-${Date.now()}`,
+        });
+    }
     setIsModalOpen(false);
   };
 
   // --- Conversion Logic ---
   const addConversion = () => {
-    const currentConversions = formData.conversions || [];
-    setFormData({
-      ...formData,
-      conversions: [...currentConversions, { name: '', factor: 1 }]
-    });
+    setUiConversions([
+        ...uiConversions, 
+        { name: '', factor: 1, operator: '*', inputValue: 1 }
+    ]);
   };
 
-  const updateConversion = (index: number, field: keyof InventoryUnitConversion, value: string | number) => {
-    const currentConversions = [...(formData.conversions || [])];
-    currentConversions[index] = { ...currentConversions[index], [field]: value };
-    setFormData({ ...formData, conversions: currentConversions });
+  const updateConversion = (index: number, field: keyof UIConversion, value: string | number) => {
+    const current = [...uiConversions];
+    current[index] = { ...current[index], [field]: value };
+    setUiConversions(current);
   };
 
   const removeConversion = (index: number) => {
-    const currentConversions = [...(formData.conversions || [])];
-    currentConversions.splice(index, 1);
-    setFormData({ ...formData, conversions: currentConversions });
+    const current = [...uiConversions];
+    current.splice(index, 1);
+    setUiConversions(current);
   };
 
   // --- XLSX Import ---
@@ -80,7 +127,6 @@ export const RejectMasterData: React.FC<RejectMasterDataProps> = ({ items, onAdd
         const row = jsonData[i];
         if (!row || row.length < 2) continue;
 
-        // Format Excel: Name, SKU, Category, BaseUnit, AltUnit, ConversionFactor
         const newItem: RejectItem = {
           id: `REJ-IMP-${Math.random().toString(36).substr(2, 5)}`,
           name: String(row[0] || 'Unknown'),
@@ -90,7 +136,6 @@ export const RejectMasterData: React.FC<RejectMasterDataProps> = ({ items, onAdd
           conversions: []
         };
 
-        // Simple logic: if row[4] (AltUnit) and row[5] (Factor) exist, add conversion
         if (row[4] && row[5]) {
            newItem.conversions?.push({
              name: String(row[4]),
@@ -120,7 +165,7 @@ export const RejectMasterData: React.FC<RejectMasterDataProps> = ({ items, onAdd
           </button>
           <input ref={fileInputRef} type="file" accept=".xlsx" className="hidden" onChange={handleImport} />
           
-          <button onClick={handleOpenModal} className="flex items-center gap-2 bg-slate-800 text-white px-4 py-2 rounded-lg hover:bg-slate-700 transition-colors">
+          <button onClick={() => handleOpenModal()} className="flex items-center gap-2 bg-slate-800 text-white px-4 py-2 rounded-lg hover:bg-slate-700 transition-colors">
             <Plus size={18} /> Tambah Barang
           </button>
         </div>
@@ -164,16 +209,21 @@ export const RejectMasterData: React.FC<RejectMasterDataProps> = ({ items, onAdd
                       <div className="flex flex-wrap gap-1">
                         {item.conversions.map((c, i) => (
                           <span key={i} className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded text-xs border border-slate-200">
-                            1 {c.name} = {c.factor} {item.baseUnit}
+                            1 {c.name} = {parseFloat(Number(c.factor).toFixed(4))} {item.baseUnit}
                           </span>
                         ))}
                       </div>
                     ) : <span className="text-slate-400 italic">-</span>}
                   </td>
                   <td className="px-6 py-4 text-right">
-                    <button onClick={() => onDeleteItem(item.id)} className="text-red-500 hover:bg-red-50 p-2 rounded">
-                      <Trash2 size={16} />
-                    </button>
+                    <div className="flex justify-end gap-2">
+                        <button onClick={() => handleOpenModal(item)} className="text-blue-600 hover:bg-blue-50 p-2 rounded">
+                            <Edit size={16} />
+                        </button>
+                        <button onClick={() => onDeleteItem(item.id)} className="text-red-500 hover:bg-red-50 p-2 rounded">
+                            <Trash2 size={16} />
+                        </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -185,12 +235,12 @@ export const RejectMasterData: React.FC<RejectMasterDataProps> = ({ items, onAdd
         </div>
       </div>
 
-      {/* MODAL ADD */}
+      {/* MODAL ADD / EDIT */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg p-6 animate-scale-in max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl p-6 animate-scale-in max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-4">
-               <h3 className="text-lg font-bold">Tambah Master Reject</h3>
+               <h3 className="text-lg font-bold">{editingItem ? 'Edit Barang Reject' : 'Tambah Master Reject'}</h3>
                <button onClick={() => setIsModalOpen(false)}><X size={20} className="text-slate-400"/></button>
             </div>
             <form onSubmit={handleSubmit} className="space-y-4">
@@ -214,28 +264,74 @@ export const RejectMasterData: React.FC<RejectMasterDataProps> = ({ items, onAdd
                </div>
 
                {/* Conversion Logic */}
-               <div className="bg-slate-50 p-3 rounded-lg border border-slate-200">
-                  <div className="flex justify-between items-center mb-2">
-                    <label className="text-xs font-bold text-slate-600 uppercase">Multi Satuan (Opsional)</label>
-                    <button type="button" onClick={addConversion} className="text-blue-600 text-xs flex items-center gap-1"><PlusCircle size={14}/> Add Unit</button>
+               <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
+                  <div className="flex justify-between items-center mb-3">
+                    <label className="text-xs font-bold text-slate-600 uppercase">Konversi Satuan (Advanced)</label>
+                    <button type="button" onClick={addConversion} className="text-blue-600 text-xs flex items-center gap-1 font-bold"><PlusCircle size={14}/> Add Unit</button>
                   </div>
-                  {formData.conversions?.map((c, idx) => (
-                    <div key={idx} className="flex items-center gap-2 mb-2 text-sm">
-                       <span>1</span>
-                       <input placeholder="Satuan (misal: GR)" className="w-24 border rounded p-1" value={c.name} onChange={e => updateConversion(idx, 'name', e.target.value)} required />
-                       <span>=</span>
-                       <input type="number" placeholder="Faktor" step="0.0001" className="w-20 border rounded p-1" value={c.factor} onChange={e => updateConversion(idx, 'factor', e.target.value)} required />
-                       <span>{formData.baseUnit}</span>
-                       <button type="button" onClick={() => removeConversion(idx)} className="text-red-500"><X size={14}/></button>
+                  
+                  {uiConversions.length === 0 && <p className="text-xs text-slate-400 italic">Belum ada satuan alternatif.</p>}
+
+                  {uiConversions.map((c, idx) => (
+                    <div key={idx} className="flex items-center gap-2 mb-2 text-sm bg-white p-2 rounded border border-slate-200">
+                       <span className="text-slate-500 font-bold">1</span>
+                       <input 
+                         placeholder="Satuan Alt (misal: GRAM)" 
+                         className="w-24 border rounded p-1 text-center font-bold" 
+                         value={c.name} 
+                         onChange={e => updateConversion(idx, 'name', e.target.value)} 
+                         required 
+                       />
+                       
+                       <span className="text-slate-400 text-xs">=</span>
+                       
+                       {/* Operator Selector */}
+                       <div className="flex bg-slate-100 rounded p-0.5">
+                           <button 
+                             type="button"
+                             onClick={() => updateConversion(idx, 'operator', '*')}
+                             className={`px-2 py-0.5 rounded text-xs font-bold ${c.operator === '*' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-500'}`}
+                             title="Dikali"
+                           >
+                            ×
+                           </button>
+                           <button 
+                             type="button"
+                             onClick={() => updateConversion(idx, 'operator', '/')}
+                             className={`px-2 py-0.5 rounded text-xs font-bold ${c.operator === '/' ? 'bg-orange-600 text-white shadow-sm' : 'text-slate-500'}`}
+                             title="Dibagi"
+                           >
+                            ÷
+                           </button>
+                       </div>
+
+                       <input 
+                         type="number" 
+                         step="0.0001" 
+                         placeholder="Nilai" 
+                         className="w-20 border rounded p-1 text-center" 
+                         value={c.inputValue} 
+                         onChange={e => updateConversion(idx, 'inputValue', parseFloat(e.target.value))} 
+                         required 
+                       />
+                       
+                       <span className="text-slate-500 text-xs font-bold">{formData.baseUnit}</span>
+                       <button type="button" onClick={() => removeConversion(idx)} className="text-slate-400 hover:text-red-500 ml-auto"><Trash2 size={16}/></button>
                     </div>
                   ))}
-                  <p className="text-[10px] text-slate-400 mt-1">
-                    Contoh: Jika Base Unit = KG, input GR maka Faktor = 0.001. <br/>
-                    Saat user input 500 GR, sistem mencatat 0.5 KG.
-                  </p>
+                  
+                  <div className="mt-3 text-[10px] text-slate-500 bg-blue-50 p-2 rounded border border-blue-100">
+                    <p className="font-bold mb-1">Panduan Konversi:</p>
+                    <ul className="list-disc pl-3 space-y-1">
+                        <li>Gunakan <span className="font-bold text-blue-600">Dikali (×)</span> jika satuan besar ke kecil (1 Box = 10 Pcs).</li>
+                        <li>Gunakan <span className="font-bold text-orange-600">Dibagi (÷)</span> jika satuan kecil ke besar (1 Gram = Base KG / 1000).</li>
+                    </ul>
+                  </div>
                </div>
 
-               <button type="submit" className="w-full bg-slate-800 text-white py-2 rounded-lg font-medium hover:bg-slate-700 mt-4">Simpan Data</button>
+               <button type="submit" className="w-full bg-slate-800 text-white py-3 rounded-lg font-bold hover:bg-slate-700 mt-4 shadow-lg">
+                 {editingItem ? 'Simpan Perubahan' : 'Simpan Barang Baru'}
+               </button>
             </form>
           </div>
         </div>
