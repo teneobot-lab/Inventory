@@ -16,9 +16,9 @@ app.use(cors({
     allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
-// Limit ditingkatkan ke 50mb untuk menangani array foto base64 yang besar
-app.use(bodyParser.json({ limit: '50mb' }));
-app.use(bodyParser.urlencoded({ limit: '50mb', extended: true }));
+// Limit ditingkatkan ke 100mb untuk menangani array foto base64 yang besar dari sistem audit/transaksi
+app.use(bodyParser.json({ limit: '100mb' }));
+app.use(bodyParser.urlencoded({ limit: '100mb', extended: true }));
 
 // --- DATABASE CONNECTION ---
 const dbConfig = {
@@ -51,8 +51,15 @@ const toCamel = (o) => {
         const jsonFields = ['conversions', 'items', 'photos'];
         if (jsonFields.includes(newKey) || jsonFields.includes(key)) {
             if (typeof value === 'string' && value.trim() !== '') {
-                try { value = JSON.parse(value); } catch (e) { value = []; }
-            } else if (value === null) { value = []; }
+                try { 
+                    value = JSON.parse(value); 
+                } catch (e) { 
+                    console.warn(`Failed to parse JSON for key ${key}:`, e.message);
+                    value = []; 
+                }
+            } else if (value === null) { 
+                value = []; 
+            }
         }
         newO[newKey] = value;
     });
@@ -71,7 +78,6 @@ const sendRes = (res, code, success, message, data = null) => {
  */
 const handleError = (res, err, customMsg = "Internal Server Error") => {
     console.error("CRITICAL_ERROR:", err);
-    // Di produksi, jangan kirim err.message asli ke client untuk alasan keamanan
     const devError = process.env.NODE_ENV === 'development' ? err.message : null;
     sendRes(res, 500, false, customMsg, devError);
 };
@@ -83,7 +89,7 @@ app.get('/api/health', async (req, res) => {
     try {
         conn = await pool.getConnection();
         await conn.ping();
-        sendRes(res, 200, true, "API & Database Online", { version: "1.0.0", uptime: process.uptime() });
+        sendRes(res, 200, true, "API & Database Online", { version: "1.0.1", uptime: process.uptime() });
     } catch (err) {
         handleError(res, err, "Database Offline");
     } finally { if (conn) conn.release(); }
@@ -216,9 +222,9 @@ app.post('/api/transactions', async (req, res) => {
         await conn.commit();
         sendRes(res, 201, true, "Transaksi berhasil");
     } catch (err) {
-        await conn.rollback();
+        if (conn) await conn.rollback();
         sendRes(res, 400, false, err.message);
-    } finally { conn.release(); }
+    } finally { if (conn) conn.release(); }
 });
 
 app.put('/api/transactions/:id', async (req, res) => {
@@ -252,9 +258,9 @@ app.put('/api/transactions/:id', async (req, res) => {
         await conn.commit();
         sendRes(res, 200, true, "Transaksi diperbarui");
     } catch (err) {
-        await conn.rollback();
+        if (conn) await conn.rollback();
         sendRes(res, 400, false, err.message);
-    } finally { conn.release(); }
+    } finally { if (conn) conn.release(); }
 });
 
 app.delete('/api/transactions/:id', async (req, res) => {
@@ -275,9 +281,9 @@ app.delete('/api/transactions/:id', async (req, res) => {
         await conn.commit();
         sendRes(res, 200, true, "Transaksi dihapus dan stok dikembalikan");
     } catch (err) {
-        await conn.rollback();
+        if (conn) await conn.rollback();
         sendRes(res, 400, false, err.message);
-    } finally { conn.release(); }
+    } finally { if (conn) conn.release(); }
 });
 
 // --- REJECT MODULE ---
@@ -432,8 +438,6 @@ app.post('/api/reports/export', async (req, res) => {
             const balanceRows = inventory.map(item => {
                 if (selectedItemId !== 'ALL' && item.id !== selectedItemId) return null;
                 
-                // Kalkulasi Saldo (Sederhana untuk Preview PDF)
-                // Di sistem nyata, kalkulasi ini harus seakurat di frontend
                 return [
                     item.sku,
                     item.name,
@@ -477,13 +481,13 @@ app.post('/api/system/reset', async (req, res) => {
         await conn.commit();
         sendRes(res, 200, true, "Sistem berhasil direset");
     } catch (err) {
-        await conn.rollback();
+        if (conn) await conn.rollback();
         handleError(res, err);
-    } finally { conn.release(); }
+    } finally { if (conn) conn.release(); }
 });
 
 // --- START SERVER ---
 app.listen(PORT, '0.0.0.0', () => {
-    console.log(`SmartInventory Pro Backend v1.0.0 listening on PORT ${PORT}`);
+    console.log(`SmartInventory Pro Backend v1.0.1 listening on PORT ${PORT}`);
     console.log(`ACID Logic Enabled. PDF Engine Ready. Standalone Reject Module Ready.`);
 });

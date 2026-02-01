@@ -36,7 +36,8 @@ export const api = {
       
       if (res.ok) {
         const data = await res.json();
-        return data.status === 'online';
+        // Backend mengembalikan { success: true, ... }
+        return data.success === true;
       }
       return false;
     } catch (e) {
@@ -53,7 +54,8 @@ export const api = {
     });
     if (!res.ok) return null;
     const data = await res.json();
-    return data.success ? data.user : null;
+    // Backend menggunakan helper sendRes yang memasukkan object ke properti 'data'
+    return data.success ? data.data : null;
   },
 
   getInventory: async (): Promise<InventoryItem[]> => {
@@ -103,7 +105,6 @@ export const api = {
     await handleResponse(res);
   },
   updateTransaction: async (tx: Transaction) => {
-    // CRITICAL FIX: Handle Response ensures we catch 404/500 errors
     const res = await fetch(`${API_URL}/transactions/${tx.id}`, { method: 'PUT', headers, body: JSON.stringify(tx) });
     await handleResponse(res);
   },
