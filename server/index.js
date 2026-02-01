@@ -296,43 +296,46 @@ app.post('/api/reject/master', async (req, res) => {
 });
 
 app.put('/api/reject/master/:id', async (req, res) => {
-    const body = req.body || {};
-
-    // NORMALISASI PAYLOAD (ANTI FE ERROR)
-    const payload = {
-        name: body.name ?? '',
-        sku: body.sku ?? '',
-        category: body.category ?? '',
-        baseUnit: body.baseUnit ?? body.base_unit ?? body.unit ?? null,
-        conversions: Array.isArray(body.conversions) ? body.conversions : []
-    };
-
-    // VALIDASI MINIMAL (WAJIB)
-    if (!payload.name || !payload.baseUnit) {
-        return sendRes(res, 400, false, "Nama & satuan dasar wajib diisi");
-    }
-
     try {
-        const sql = `
-          UPDATE reject_master 
-          SET name=?, sku=?, category=?, base_unit=?, conversions=? 
-          WHERE id=?
-        `;
+        const body = req.body || {};
 
-        await pool.query(sql, [
-            payload.name,
-            payload.sku,
-            payload.category,
-            payload.baseUnit,
-            JSON.stringify(payload.conversions),
-            req.params.id
-        ]);
+        const payload = {
+            name: String(body.name || '').trim(),
+            sku: String(body.sku || '').trim(),
+            category: String(body.category || '').trim(),
+            baseUnit: body.baseUnit || body.base_unit || body.unit,
+            conversions: Array.isArray(body.conversions) ? body.conversions : []
+        };
+
+        if (!payload.name || !payload.baseUnit) {
+            return sendRes(res, 422, false, "Nama & satuan dasar wajib diisi");
+        }
+
+        const [result] = await pool.query(
+            `UPDATE reject_master 
+             SET name=?, sku=?, category=?, base_unit=?, conversions=? 
+             WHERE id=?`,
+            [
+                payload.name,
+                payload.sku,
+                payload.category,
+                payload.baseUnit,
+                JSON.stringify(payload.conversions),
+                req.params.id
+            ]
+        );
+
+        if (result.affectedRows === 0) {
+            return sendRes(res, 404, false, "Data reject tidak ditemukan");
+        }
 
         sendRes(res, 200, true, "Master reject diperbarui");
     } catch (err) {
-        handleError(res, err, "Gagal memperbarui master reject");
+        console.error("PUT REJECT ERROR:", err);
+        sendRes(res, 500, false, "Gagal update master reject");
     }
 });
+
 
 app.delete('/api/reject/master/:id', async (req, res) => {
     try {
