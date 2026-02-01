@@ -1,6 +1,5 @@
 
 import React, { useState, useEffect } from 'react';
-// Added AlertCircle to imports from lucide-react
 import { User, Lock, Loader2, CheckCircle2, Wifi, WifiOff, RefreshCw, AlertCircle } from 'lucide-react';
 import { Toast } from './Toast';
 import { api } from '../services/api';
@@ -14,11 +13,9 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState(false);
   
-  // Connection Status State
   const [serverStatus, setServerStatus] = useState<'checking' | 'online' | 'offline'>('checking');
   const [dbStatus, setDbStatus] = useState<boolean>(false);
   
-  // Animation States
   const [isLoading, setIsLoading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [toast, setToast] = useState<{show: boolean, message: string, type: 'success' | 'error'}>({
@@ -33,12 +30,13 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
       setDbStatus(status.db);
       
       if (!status.online) {
-         setToast({ show: true, message: 'Server API tidak merespons. Pastikan backend di VPS menyala.', type: 'error' });
+         setToast({ show: true, message: 'Server API tidak merespons. Pastikan backend menyala.', type: 'error' });
       } else if (!status.db) {
          setToast({ show: true, message: 'API Online, tapi gagal terhubung ke Database MySQL.', type: 'error' });
       }
     } catch (e) {
       setServerStatus('offline');
+      setToast({ show: true, message: 'Gagal menghubungi server.', type: 'error' });
     }
   };
 
@@ -46,56 +44,45 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
     checkServer();
   }, []);
 
-  const handleLoginProcess = (e: React.FormEvent) => {
+  const handleLoginProcess = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isLoading) return;
     
-    // Memberikan izin login jika user memaksa meskipun status "offline" (sebagai fallback)
-    if (serverStatus === 'offline') {
-        const confirmForce = confirm("Server terdeteksi offline. Coba paksa login?");
-        if (!confirmForce) return;
-    }
-
     if (!username || !password) {
       setToast({ show: true, message: 'Mohon isi Username dan Password', type: 'error' });
       return;
     }
 
     setIsLoading(true);
-    setProgress(0);
-
-    const duration = 1500; 
-    const intervalTime = 20;
-    const steps = duration / intervalTime;
-    let currentStep = 0;
-
-    const timer = setInterval(() => {
-      currentStep++;
-      const newProgress = Math.min((currentStep / steps) * 100, 100);
-      setProgress(newProgress);
-
-      if (currentStep >= steps) {
-        clearInterval(timer);
-        finalizeLogin();
-      }
-    }, intervalTime);
-  };
-
-  const finalizeLogin = async () => {
+    setProgress(10); // Mulai progress
+    
     try {
-      const user = await api.login(username, password);
+      // 1. Cek Kredensial via API
+      setProgress(40);
+      const user = await api.login(username.trim(), password);
+      
       if (user) {
-         setProgress(100);
-         setToast({ show: true, message: 'Login Berhasil! Mengalihkan...', type: 'success' });
-         setTimeout(() => onLogin(username, password), 1000);
+        // 2. Simulasi visual progress untuk UX
+        setProgress(70);
+        await new Promise(resolve => setTimeout(resolve, 500));
+        setProgress(100);
+        
+        setToast({ show: true, message: 'Login Berhasil! Mengalihkan...', type: 'success' });
+        
+        // 3. Callback ke App parent
+        setTimeout(() => onLogin(username, password), 500);
       } else {
-         throw new Error("Invalid");
+        throw new Error("Kredensial salah.");
       }
-    } catch (error) {
+    } catch (err: any) {
        setIsLoading(false);
        setProgress(0);
        setError(true);
-       setToast({ show: true, message: 'Username atau Password salah!', type: 'error' });
+       setToast({ 
+         show: true, 
+         message: err.message || 'Login gagal. Cek kembali koneksi & kredensial.', 
+         type: 'error' 
+       });
        setTimeout(() => setError(false), 500);
     }
   };
@@ -122,7 +109,6 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
             <p className="text-slate-400 text-xs tracking-widest mt-2 uppercase font-medium">Secure Access Portal</p>
         </div>
 
-        {/* Server Status Indicator dengan Tombol Refresh */}
         <div className="flex items-center gap-2 mb-6">
           <div className={`px-4 py-2 rounded-full border flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider transition-all ${
               serverStatus === 'online' ? (dbStatus ? 'bg-green-500/20 border-green-500/50 text-green-300' : 'bg-yellow-500/20 border-yellow-500/50 text-yellow-300') : 
@@ -163,7 +149,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
               value={username}
               disabled={isLoading}
               onChange={(e) => setUsername(e.target.value)}
-              className="w-full h-12 bg-white/10 text-white placeholder-slate-400 pl-16 pr-6 rounded-full border border-white/10 focus:border-white/50 focus:bg-white/20 transition-all shadow-inner outline-none"
+              className="w-full h-12 bg-white/10 text-white placeholder-slate-400 pl-16 pr-6 rounded-full border border-white/10 focus:border-white/50 focus:bg-white/20 transition-all shadow-inner outline-none disabled:opacity-50"
             />
           </div>
 
@@ -174,7 +160,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
               value={password}
               disabled={isLoading}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full h-12 bg-white/10 text-white placeholder-slate-400 pl-6 pr-16 rounded-full border border-white/10 focus:border-white/50 focus:bg-white/20 transition-all shadow-inner outline-none"
+              className="w-full h-12 bg-white/10 text-white placeholder-slate-400 pl-6 pr-16 rounded-full border border-white/10 focus:border-white/50 focus:bg-white/20 transition-all shadow-inner outline-none disabled:opacity-50"
             />
              <div className="absolute right-0 top-0 bottom-0 w-12 h-12 bg-white rounded-full flex items-center justify-center z-10 shadow-lg transition-transform group-focus-within:scale-105">
                <Lock size={20} className="text-slate-800" />
@@ -201,7 +187,8 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
             ) : (
                <button 
                   type="submit"
-                  className="w-full h-12 bg-white text-slate-900 font-bold text-sm rounded-full hover:bg-slate-200 hover:scale-[1.02] active:scale-95 transition-all shadow-lg uppercase tracking-widest flex items-center justify-center gap-2 group"
+                  disabled={serverStatus === 'checking'}
+                  className="w-full h-12 bg-white text-slate-900 font-bold text-sm rounded-full hover:bg-slate-200 hover:scale-[1.02] active:scale-95 transition-all shadow-lg uppercase tracking-widest flex items-center justify-center gap-2 group disabled:opacity-50"
                >
                   Sign In <span className="group-hover:translate-x-1 transition-transform">→</span>
                </button>

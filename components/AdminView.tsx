@@ -33,6 +33,7 @@ export const AdminView: React.FC<AdminViewProps> = ({ user, items, transactions 
     name: '', username: '', password: '', email: '', role: 'staff'
   });
   const [showPassword, setShowPassword] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // --- Reset Database State ---
   const [isResetModalOpen, setIsResetModalOpen] = useState(false);
@@ -48,17 +49,27 @@ export const AdminView: React.FC<AdminViewProps> = ({ user, items, transactions 
   }, []);
 
   const loadUsers = async () => {
-    const data = await api.getUsers();
-    setUsers(data);
+    try {
+      const data = await api.getUsers();
+      setUsers(data);
+    } catch(e) {
+      console.error("Failed to load users", e);
+    }
   };
 
   // --- AI Logic ---
   const handleRunAnalysis = async () => {
+    if (isLoading) return;
     setIsLoading(true);
-    setAiAnalysis('');
-    const result = await generateInventoryInsights(items, transactions);
-    setAiAnalysis(result);
-    setIsLoading(false);
+    try {
+      setAiAnalysis('');
+      const result = await generateInventoryInsights(items, transactions);
+      setAiAnalysis(result);
+    } catch(e:any) {
+      setAiAnalysis("Gagal memuat analisis: " + e.message);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   // --- Sync Logic ---
@@ -68,18 +79,28 @@ export const AdminView: React.FC<AdminViewProps> = ({ user, items, transactions 
       return;
     }
     
+    if (isSyncing) return;
     setIsSyncing(true);
     
-    // Simulate API Call delay
-    setTimeout(() => {
+    try {
+       // Melakukan simulasi pengiriman data
+       const payload = { items, transactions };
+       // Catatan: Di production sesungguhnya, ini akan melakukan fetch ke scriptUrl
+       
+       // Simulasi delay jaringan
+       await new Promise(resolve => setTimeout(resolve, 2000));
+       
        const now = new Date().toLocaleString('id-ID');
        setLastSyncTime(now);
        localStorage.setItem('gs_script_url', syncConfig.scriptUrl);
        localStorage.setItem('gs_sheet_id', syncConfig.sheetId);
        localStorage.setItem('gs_last_sync', now);
-       setIsSyncing(false);
        setToast({ show: true, message: "Sinkronisasi berhasil! (Simulasi)", type: 'success' });
-    }, 2000);
+    } catch(e:any) {
+       setToast({ show: true, message: "Sinkronisasi gagal: " + e.message, type: 'error' });
+    } finally {
+       setIsSyncing(false);
+    }
   };
 
   // --- User CRUD Logic ---
@@ -97,34 +118,54 @@ export const AdminView: React.FC<AdminViewProps> = ({ user, items, transactions 
 
   const handleSaveUser = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
+
     if (!userFormData.username || !userFormData.password || !userFormData.name) {
        alert("Username, Password, dan Nama wajib diisi.");
        return;
     }
 
-    if (editingUser) {
-      await api.updateUser({ ...editingUser, ...userFormData } as User);
-    } else {
-      const newUser: User = {
-        ...userFormData as User,
-        id: `user-${Date.now()}`
-      };
-      await api.addUser(newUser);
+    setIsSubmitting(true);
+    try {
+      if (editingUser) {
+        await api.updateUser({ ...editingUser, ...userFormData } as User);
+        setToast({ show: true, message: "User berhasil diperbarui.", type: 'success' });
+      } else {
+        const newUser: User = {
+          ...userFormData as User,
+          id: `user-${Date.now()}`
+        };
+        await api.addUser(newUser);
+        setToast({ show: true, message: "User baru berhasil ditambahkan.", type: 'success' });
+      }
+      await loadUsers();
+      setIsUserModalOpen(false);
+    } catch(e:any) {
+      alert(`Gagal menyimpan user: ${e.message}`);
+    } finally {
+      setIsSubmitting(false);
     }
-    await loadUsers();
-    setIsUserModalOpen(false);
   };
 
   const handleDeleteUser = async (id: string) => {
+    if (isSubmitting) return;
     if (confirm("Apakah anda yakin ingin menghapus user ini?")) {
-      await api.deleteUser(id);
-      await loadUsers();
+      setIsSubmitting(true);
+      try {
+        await api.deleteUser(id);
+        setToast({ show: true, message: "User berhasil dihapus.", type: 'success' });
+        await loadUsers();
+      } catch(e:any) {
+        alert(`Gagal menghapus user: ${e.message}`);
+      } finally {
+        setIsSubmitting(false);
+      }
     }
   };
 
   // --- System Reset Logic ---
   const handleResetDatabase = async () => {
-    if (resetConfirmText !== 'RESET') return;
+    if (resetConfirmText !== 'RESET' || isResetting) return;
     
     setIsResetting(true);
     try {
@@ -138,8 +179,8 @@ export const AdminView: React.FC<AdminViewProps> = ({ user, items, transactions 
       } else {
         setToast({ show: true, message: result.error || "Gagal mereset database.", type: 'error' });
       }
-    } catch (error) {
-      setToast({ show: true, message: "Terjadi kesalahan jaringan.", type: 'error' });
+    } catch (error:any) {
+      setToast({ show: true, message: "Terjadi kesalahan: " + error.message, type: 'error' });
     } finally {
       setIsResetting(false);
     }
@@ -209,9 +250,10 @@ export const AdminView: React.FC<AdminViewProps> = ({ user, items, transactions 
                     <input 
                        type="password"
                        placeholder="https://script.google.com/macros/s/..."
-                       className="w-full bg-transparent outline-none text-sm dark:text-slate-200"
+                       className="w-full bg-transparent outline-none text-sm dark:text-slate-200 disabled:opacity-50"
                        value={syncConfig.scriptUrl}
                        onChange={e => setSyncConfig({...syncConfig, scriptUrl: e.target.value})}
+                       disabled={isSyncing}
                     />
                  </div>
               </div>
@@ -220,9 +262,10 @@ export const AdminView: React.FC<AdminViewProps> = ({ user, items, transactions 
                  <input 
                     type="text"
                     placeholder="1BxiMVs0XRA5nFK..."
-                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-green-500 dark:text-slate-200"
+                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-green-500 dark:text-slate-200 disabled:opacity-50"
                     value={syncConfig.sheetId}
                     onChange={e => setSyncConfig({...syncConfig, sheetId: e.target.value})}
+                    disabled={isSyncing}
                  />
               </div>
               
@@ -289,7 +332,8 @@ export const AdminView: React.FC<AdminViewProps> = ({ user, items, transactions 
               </h3>
               <button 
                 onClick={() => handleOpenUserModal()}
-                className="flex items-center gap-1 bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
+                disabled={isSubmitting}
+                className="flex items-center gap-1 bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
               >
                 <Plus size={16} /> Add User
               </button>
@@ -320,10 +364,10 @@ export const AdminView: React.FC<AdminViewProps> = ({ user, items, transactions 
                           <td className="px-4 py-3 text-xs">{u.email}</td>
                           <td className="px-4 py-3 text-right">
                              <div className="flex justify-end gap-1">
-                                <button onClick={() => handleOpenUserModal(u)} className="p-1.5 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded">
+                                <button onClick={() => handleOpenUserModal(u)} disabled={isSubmitting} className="p-1.5 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded disabled:opacity-50">
                                    <Edit size={14} />
                                 </button>
-                                <button onClick={() => handleDeleteUser(u.id)} className="p-1.5 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 rounded">
+                                <button onClick={() => handleDeleteUser(u.id)} disabled={isSubmitting} className="p-1.5 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 rounded disabled:opacity-50">
                                    <Trash2 size={14} />
                                 </button>
                              </div>
@@ -350,9 +394,10 @@ export const AdminView: React.FC<AdminViewProps> = ({ user, items, transactions 
               </div>
               <button 
                 onClick={() => setIsResetModalOpen(true)}
-                className="w-full md:w-auto flex items-center justify-center gap-2 bg-red-600 hover:bg-red-700 text-white font-bold px-8 py-3 rounded-xl transition-all shadow-lg shadow-red-200 dark:shadow-none active:scale-95"
+                disabled={isResetting}
+                className="w-full md:w-auto flex items-center justify-center gap-2 bg-red-600 hover:bg-red-700 text-white font-bold px-8 py-3 rounded-xl transition-all shadow-lg shadow-red-200 dark:shadow-none active:scale-95 disabled:opacity-50"
               >
-                 <Trash size={18} /> Reset Database
+                 {isResetting ? <Loader2 size={18} className="animate-spin" /> : <Trash size={18} />} Reset Database
               </button>
            </div>
         </div>
@@ -365,7 +410,7 @@ export const AdminView: React.FC<AdminViewProps> = ({ user, items, transactions 
             <div className="bg-white dark:bg-slate-900 rounded-xl shadow-xl w-full max-w-md p-6 animate-scale-in border dark:border-slate-800">
                <div className="flex justify-between items-center mb-4">
                   <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100">{editingUser ? 'Edit User' : 'Add New User'}</h3>
-                  <button onClick={() => setIsUserModalOpen(false)}><X size={20} className="text-slate-400 hover:text-slate-600"/></button>
+                  <button onClick={() => setIsUserModalOpen(false)} disabled={isSubmitting}><X size={20} className="text-slate-400 hover:text-slate-600"/></button>
                </div>
                
                <form onSubmit={handleSaveUser} className="space-y-4">
@@ -374,9 +419,10 @@ export const AdminView: React.FC<AdminViewProps> = ({ user, items, transactions 
                      <input 
                         required
                         type="text"
-                        className="w-full border dark:border-slate-700 dark:bg-slate-800 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500 dark:text-white"
+                        className="w-full border dark:border-slate-700 dark:bg-slate-800 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500 dark:text-white disabled:opacity-50"
                         value={userFormData.name}
                         onChange={e => setUserFormData({...userFormData, name: e.target.value})}
+                        disabled={isSubmitting}
                      />
                   </div>
                   <div className="grid grid-cols-2 gap-4">
@@ -385,17 +431,19 @@ export const AdminView: React.FC<AdminViewProps> = ({ user, items, transactions 
                         <input 
                            required
                            type="text"
-                           className="w-full border dark:border-slate-700 dark:bg-slate-800 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500 dark:text-white"
+                           className="w-full border dark:border-slate-700 dark:bg-slate-800 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500 dark:text-white disabled:opacity-50"
                            value={userFormData.username}
                            onChange={e => setUserFormData({...userFormData, username: e.target.value})}
+                           disabled={isSubmitting}
                         />
                      </div>
                      <div>
                         <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Role</label>
                         <select 
-                           className="w-full border dark:border-slate-700 dark:bg-slate-800 rounded-lg p-2.5 outline-none bg-white dark:text-white"
+                           className="w-full border dark:border-slate-700 dark:bg-slate-800 rounded-lg p-2.5 outline-none bg-white dark:text-white disabled:opacity-50"
                            value={userFormData.role}
                            onChange={e => setUserFormData({...userFormData, role: e.target.value as any})}
+                           disabled={isSubmitting}
                         >
                            <option value="staff">Staff</option>
                            <option value="admin">Admin</option>
@@ -407,9 +455,10 @@ export const AdminView: React.FC<AdminViewProps> = ({ user, items, transactions 
                      <input 
                         required
                         type="email"
-                        className="w-full border dark:border-slate-700 dark:bg-slate-800 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500 dark:text-white"
+                        className="w-full border dark:border-slate-700 dark:bg-slate-800 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500 dark:text-white disabled:opacity-50"
                         value={userFormData.email}
                         onChange={e => setUserFormData({...userFormData, email: e.target.value})}
+                        disabled={isSubmitting}
                      />
                   </div>
                   <div>
@@ -418,9 +467,10 @@ export const AdminView: React.FC<AdminViewProps> = ({ user, items, transactions 
                         <input 
                            required
                            type={showPassword ? "text" : "password"}
-                           className="w-full border dark:border-slate-700 dark:bg-slate-800 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500 pr-10 dark:text-white"
+                           className="w-full border dark:border-slate-700 dark:bg-slate-800 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500 pr-10 dark:text-white disabled:opacity-50"
                            value={userFormData.password}
                            onChange={e => setUserFormData({...userFormData, password: e.target.value})}
+                           disabled={isSubmitting}
                         />
                         <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-3 text-slate-400">
                            {showPassword ? <EyeOff size={16}/> : <Eye size={16}/>}
@@ -429,8 +479,9 @@ export const AdminView: React.FC<AdminViewProps> = ({ user, items, transactions 
                   </div>
                   
                   <div className="pt-2">
-                     <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 rounded-lg transition-colors flex justify-center items-center gap-2">
-                        <Save size={18} /> Simpan User
+                     <button type="submit" disabled={isSubmitting} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 rounded-lg transition-colors flex justify-center items-center gap-2 disabled:opacity-50">
+                        {isSubmitting ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />} 
+                        {isSubmitting ? 'Memproses...' : 'Simpan User'}
                      </button>
                   </div>
                </form>
@@ -458,16 +509,18 @@ export const AdminView: React.FC<AdminViewProps> = ({ user, items, transactions 
                      <input 
                         type="text"
                         placeholder="RESET"
-                        className="w-full text-center border-2 border-slate-100 dark:border-slate-800 dark:bg-slate-800 rounded-xl p-3 font-bold tracking-widest outline-none focus:border-red-500 transition-all dark:text-white"
+                        className="w-full text-center border-2 border-slate-100 dark:border-slate-800 dark:bg-slate-800 rounded-xl p-3 font-bold tracking-widest outline-none focus:border-red-500 transition-all dark:text-white disabled:opacity-50"
                         value={resetConfirmText}
                         onChange={e => setResetConfirmText(e.target.value.toUpperCase())}
+                        disabled={isResetting}
                      />
                   </div>
                   
                   <div className="flex gap-3 pt-2">
                      <button 
                         onClick={() => setIsResetModalOpen(false)}
-                        className="flex-1 py-3 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-bold rounded-xl hover:bg-slate-200 transition-colors"
+                        disabled={isResetting}
+                        className="flex-1 py-3 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-bold rounded-xl hover:bg-slate-200 transition-colors disabled:opacity-50"
                      >
                         Batal
                      </button>
