@@ -1,16 +1,15 @@
 
 import React, { useState, useRef } from 'react';
 import { InventoryItem, InventoryUnitConversion } from '../types';
-import { Plus, Search, Edit2, Trash2, AlertCircle, Upload, Download, CheckSquare, X, PlusCircle, Trash, FileSpreadsheet, Loader2 } from 'lucide-react';
+import { Plus, Search, Edit2, Trash2, AlertCircle, Upload, Download, CheckSquare, X, PlusCircle, Trash, FileSpreadsheet } from 'lucide-react';
 import * as XLSX from 'xlsx';
-import { Toast } from './Toast';
 
 interface InventoryModuleProps {
   items: InventoryItem[];
-  onAddItem: (item: InventoryItem) => Promise<void> | void;
-  onUpdateItem: (item: InventoryItem) => Promise<void> | void;
-  onDeleteItem: (id: string) => Promise<void> | void;
-  onBulkDeleteItem?: (ids: string[]) => Promise<void> | void;
+  onAddItem: (item: InventoryItem) => void;
+  onUpdateItem: (item: InventoryItem) => void;
+  onDeleteItem: (id: string) => void;
+  onBulkDeleteItem?: (ids: string[]) => void;
 }
 
 export const InventoryModule: React.FC<InventoryModuleProps> = ({ items, onAddItem, onUpdateItem, onDeleteItem, onBulkDeleteItem }) => {
@@ -20,16 +19,12 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ items, onAddIt
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   
-  // UI Loading States
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [showToast, setShowToast] = useState(false);
-  const [toastMsg, setToastMsg] = useState('');
-
   // Selection State for Bulk Actions
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   
   const [editingItem, setEditingItem] = useState<InventoryItem | null>(null);
   
+  // Form State - Using strings for numeric fields to allow empty state and decimals
   const [formData, setFormData] = useState({
     name: '',
     sku: '',
@@ -48,6 +43,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ items, onAddIt
     item.sku.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  // --- Bulk Selection Logic ---
   const toggleSelectAll = () => {
     if (selectedIds.size === filteredItems.length && filteredItems.length > 0) {
       setSelectedIds(new Set());
@@ -66,30 +62,20 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ items, onAddIt
     setSelectedIds(newSelected);
   };
 
-  const handleBulkDelete = async () => {
-    if (selectedIds.size === 0 || isSubmitting) return;
+  const handleBulkDelete = () => {
+    if (selectedIds.size === 0) return;
     
     if (confirm(`Apakah Anda yakin ingin menghapus ${selectedIds.size} item secara massal? Tindakan ini tidak dapat dibatalkan.`)) {
-      setIsSubmitting(true);
-      try {
-        if (onBulkDeleteItem) {
-            await onBulkDeleteItem(Array.from(selectedIds));
-        } else {
-            for (const id of selectedIds) {
-                await onDeleteItem(id);
-            }
-        }
-        setToastMsg(`${selectedIds.size} item berhasil dihapus secara massal.`);
-        setShowToast(true);
-        setSelectedIds(new Set());
-      } catch (error: any) {
-        alert(`Gagal hapus massal: ${error.message}`);
-      } finally {
-        setIsSubmitting(false);
+      if (onBulkDeleteItem) {
+          onBulkDeleteItem(Array.from(selectedIds));
+      } else {
+          selectedIds.forEach(id => onDeleteItem(id));
       }
+      setSelectedIds(new Set());
     }
   };
 
+  // --- Modal Logic ---
   const handleOpenModal = (item?: InventoryItem) => {
     if (item) {
       setEditingItem(item);
@@ -97,10 +83,10 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ items, onAddIt
         name: item.name,
         sku: item.sku,
         category: item.category,
-        stock: Number(item.stock).toString(),
-        minStock: Number(item.minStock).toString(),
+        stock: item.stock.toString(),
+        minStock: item.minStock.toString(),
         unit: item.unit,
-        price: Number(item.price).toString(),
+        price: item.price.toString(),
         conversions: item.conversions || []
       });
     } else {
@@ -113,16 +99,16 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ items, onAddIt
   };
 
   const handleNumericInput = (field: 'stock' | 'minStock' | 'price', value: string) => {
+    // Allow digits and at most one decimal point
     const sanitized = value.replace(/[^0-9.]/g, '');
     const dots = sanitized.split('.').length - 1;
     if (dots > 1) return;
     setFormData({ ...formData, [field]: sanitized });
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (isSubmitting) return;
-
+    
     const normalizedSku = formData.sku?.trim().toLowerCase();
     const isDuplicate = items.some(item => 
       item.sku.trim().toLowerCase() === normalizedSku && 
@@ -135,36 +121,27 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ items, onAddIt
     }
 
     const payload: InventoryItem = {
-      id: editingItem?.id || `INV-${Date.now()}`,
-      name: formData.name.trim(),
-      sku: formData.sku.trim(),
-      category: formData.category.trim(),
+      id: editingItem?.id || Math.random().toString(36).substr(2, 9),
+      name: formData.name,
+      sku: formData.sku,
+      category: formData.category,
       stock: parseFloat(formData.stock) || 0,
       minStock: parseFloat(formData.minStock) || 0,
-      unit: formData.unit.trim(),
+      unit: formData.unit,
       price: parseFloat(formData.price) || 0,
       conversions: formData.conversions,
       lastUpdated: new Date().toISOString()
     };
 
-    setIsSubmitting(true);
-    try {
-      if (editingItem) {
-        await onUpdateItem(payload);
-        setToastMsg("Data barang berhasil diperbarui.");
-      } else {
-        await onAddItem(payload);
-        setToastMsg("Barang baru berhasil ditambahkan.");
-      }
-      setShowToast(true);
-      setIsModalOpen(false); 
-    } catch (error: any) {
-      alert(`Gagal menyimpan: ${error.message}`);
-    } finally {
-      setIsSubmitting(false);
+    if (editingItem) {
+      onUpdateItem(payload);
+    } else {
+      onAddItem(payload);
     }
+    setIsModalOpen(false);
   };
 
+  // --- Conversion Logic ---
   const addConversion = () => {
     setFormData({
       ...formData,
@@ -189,6 +166,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ items, onAddIt
     setFormData({ ...formData, conversions: currentConversions });
   };
 
+  // --- Import/Export Logic (XLSX) ---
   const handleDownloadTemplate = () => {
     const headers = ["name", "sku", "category", "stock", "minStock", "unit", "price"];
     const sampleData = ["Sample Item", "SMPL-001", "General", 100, 10, "pcs", 50000];
@@ -203,7 +181,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ items, onAddIt
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onload = async (evt) => {
+    reader.onload = (evt) => {
       const data = evt.target?.result;
       if (!data) return;
 
@@ -223,74 +201,64 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ items, onAddIt
       let importedCount = 0;
       let skippedCount = 0;
 
-      setIsSubmitting(true);
-      try {
-        for (let i = 1; i < jsonData.length; i++) {
-          const row = jsonData[i];
-          if (!row || row.length === 0) continue;
-          
-          const name = row[0] ? String(row[0]).trim() : "Unnamed Item";
-          const skuInput = row[1] ? String(row[1]).trim() : `AUTO-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
-          const category = row[2] ? String(row[2]).trim() : "Uncategorized";
-          const stock = parseFloat(String(row[3])) || 0;
-          const minStock = parseFloat(String(row[4])) || 0;
-          const unit = row[5] ? String(row[5]).trim() : "pcs";
-          const price = parseFloat(String(row[6])) || 0;
+      for (let i = 1; i < jsonData.length; i++) {
+        const row = jsonData[i];
+        if (!row || row.length === 0) continue;
+        
+        const name = row[0] ? String(row[0]).trim() : "Unnamed Item";
+        const skuInput = row[1] ? String(row[1]).trim() : `AUTO-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
+        const category = row[2] ? String(row[2]).trim() : "Uncategorized";
+        const stock = parseFloat(String(row[3])) || 0;
+        const minStock = parseFloat(String(row[4])) || 0;
+        const unit = row[5] ? String(row[5]).trim() : "pcs";
+        const price = parseFloat(String(row[6])) || 0;
 
-          const normalizedSku = skuInput.toLowerCase();
+        const normalizedSku = skuInput.toLowerCase();
 
-          if (existingSkusInDb.has(normalizedSku) || processedSkusInCurrentFile.has(normalizedSku)) {
-            skippedCount++;
-            continue;
-          }
-
-          const newItem: InventoryItem = {
-            id: `INV-${Date.now()}-${i}`,
-            name,
-            sku: skuInput,
-            category,
-            stock: isNaN(stock) ? 0 : stock,
-            minStock: isNaN(minStock) ? 0 : minStock,
-            unit,
-            price: isNaN(price) ? 0 : price,
-            conversions: [],
-            lastUpdated: new Date().toISOString()
-          };
-
-          await onAddItem(newItem);
-          processedSkusInCurrentFile.add(normalizedSku);
-          importedCount++;
+        if (existingSkusInDb.has(normalizedSku) || processedSkusInCurrentFile.has(normalizedSku)) {
+          skippedCount++;
+          continue;
         }
-        alert(`Import Selesai.\n- Berhasil: ${importedCount} item baru\n- Dilewati (SKU Duplikat): ${skippedCount} item`);
-        setIsImportModalOpen(false);
-      } catch (err: any) {
-        alert(`Terjadi error saat import: ${err.message}`);
-      } finally {
-        setIsSubmitting(false);
-        if (fileInputRef.current) fileInputRef.current.value = '';
+
+        const newItem: InventoryItem = {
+          id: Math.random().toString(36).substr(2, 9),
+          name,
+          sku: skuInput,
+          category,
+          stock: isNaN(stock) ? 0 : stock,
+          minStock: isNaN(minStock) ? 0 : minStock,
+          unit,
+          price: isNaN(price) ? 0 : price,
+          conversions: [],
+          lastUpdated: new Date().toISOString()
+        };
+
+        onAddItem(newItem);
+        processedSkusInCurrentFile.add(normalizedSku);
+        importedCount++;
       }
+      
+      alert(`Import Selesai.\n- Berhasil: ${importedCount} item baru\n- Dilewati (SKU Duplikat): ${skippedCount} item`);
+      setIsImportModalOpen(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
     };
     reader.readAsArrayBuffer(file);
   };
 
   return (
     <div className="space-y-6">
-      <Toast isVisible={showToast} message={toastMsg} onClose={() => setShowToast(false)} />
-
       <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
         <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Inventory Management</h2>
         <div className="flex gap-2">
           <button 
             onClick={() => setIsImportModalOpen(true)}
-            disabled={isSubmitting}
-            className="flex items-center gap-2 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 px-4 py-2 rounded-lg transition-colors border border-transparent dark:border-slate-700 disabled:opacity-50"
+            className="flex items-center gap-2 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 px-4 py-2 rounded-lg transition-colors border border-transparent dark:border-slate-700"
           >
             <Upload size={18} /> Import
           </button>
           <button 
             onClick={() => handleOpenModal()}
-            disabled={isSubmitting}
-            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-all shadow-md active:scale-95 disabled:opacity-50"
+            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-all shadow-md active:scale-95"
           >
             <Plus size={18} /> Add Item
           </button>
@@ -302,11 +270,9 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ items, onAddIt
           <span className="text-blue-800 dark:text-blue-300 font-medium px-2">{selectedIds.size} items selected</span>
           <button 
             onClick={handleBulkDelete}
-            disabled={isSubmitting}
-            className="flex items-center gap-2 bg-white dark:bg-slate-800 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 px-3 py-1.5 rounded-lg transition-colors text-sm font-bold border border-red-100 dark:border-red-900/50 shadow-sm disabled:opacity-50"
+            className="flex items-center gap-2 bg-white dark:bg-slate-800 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 px-3 py-1.5 rounded-lg transition-colors text-sm font-bold border border-red-100 dark:border-red-900/50 shadow-sm"
           >
-            {isSubmitting ? <Loader2 size={16} className="animate-spin" /> : <Trash size={16} />} 
-            Delete Selected
+            <Trash size={16} /> Delete Selected
           </button>
         </div>
       )}
@@ -360,7 +326,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ items, onAddIt
                   <td className="px-6 py-4 font-bold text-slate-900 dark:text-slate-100">{item.name}</td>
                   <td className="px-6 py-4 font-mono text-xs text-slate-500 dark:text-slate-400 uppercase tracking-tighter">{item.sku}</td>
                   <td className="px-6 py-4">
-                    <span className="font-bold text-slate-800 dark:text-slate-200">{Number(item.stock).toLocaleString('id-ID', { maximumFractionDigits: 3 })}</span> <span className="text-slate-400">{item.unit}</span>
+                    <span className="font-bold text-slate-800 dark:text-slate-200">{item.stock}</span> <span className="text-slate-400">{item.unit}</span>
                   </td>
                   <td className="px-6 py-4">
                     <div className="flex flex-col text-xs text-slate-500 dark:text-slate-400">
@@ -372,9 +338,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ items, onAddIt
                       )}
                     </div>
                   </td>
-                  <td className="px-6 py-4 font-mono text-slate-700 dark:text-slate-300">
-                      Rp {Number(item.price).toLocaleString('id-ID')}
-                  </td>
+                  <td className="px-6 py-4 font-mono text-slate-700 dark:text-slate-300">Rp {item.price.toLocaleString('id-ID')}</td>
                   <td className="px-6 py-4">
                     {item.stock <= item.minStock ? (
                       <span className="inline-flex items-center gap-1.5 text-red-600 dark:text-red-400 font-bold text-[10px] uppercase bg-red-50 dark:bg-red-900/20 px-2 py-1 rounded-full border border-red-100 dark:border-red-900/50">
@@ -388,31 +352,10 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ items, onAddIt
                   </td>
                   <td className="px-6 py-4 text-right">
                     <div className="flex justify-end gap-1">
-                      <button 
-                        onClick={() => handleOpenModal(item)} 
-                        disabled={isSubmitting}
-                        className="p-2 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition-colors disabled:opacity-50" 
-                        title="Edit Item"
-                      >
+                      <button onClick={() => handleOpenModal(item)} className="p-2 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition-colors" title="Edit Item">
                         <Edit2 size={16} />
                       </button>
-                      <button 
-                        onClick={async () => {
-                           if(confirm('Apakah Anda yakin ingin menghapus item ini?')) {
-                             setIsSubmitting(true);
-                             try { 
-                                await onDeleteItem(item.id); 
-                                setToastMsg("Item berhasil dihapus.");
-                                setShowToast(true);
-                             } 
-                             catch(e:any) { alert(`Gagal hapus: ${e.message}`); }
-                             finally { setIsSubmitting(false); }
-                           }
-                        }} 
-                        disabled={isSubmitting}
-                        className="p-2 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors disabled:opacity-50" 
-                        title="Delete Item"
-                      >
+                      <button onClick={() => onDeleteItem(item.id)} className="p-2 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors" title="Delete Item">
                         <Trash2 size={16} />
                       </button>
                     </div>
@@ -439,48 +382,48 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ items, onAddIt
           <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl max-w-lg w-full p-8 animate-scale-in max-h-[90vh] overflow-y-auto border border-slate-200 dark:border-slate-800">
             <div className="flex justify-between items-center mb-6">
                <h3 className="text-2xl font-bold text-slate-800 dark:text-slate-100">{editingItem ? 'Edit Product' : 'New Product'}</h3>
-               <button onClick={() => setIsModalOpen(false)} disabled={isSubmitting} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"><X size={24}/></button>
+               <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"><X size={24}/></button>
             </div>
             <form onSubmit={handleSubmit} className="space-y-5">
               <div>
                 <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">Item Name</label>
-                <input required type="text" className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-3 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-blue-500/20 outline-none disabled:opacity-50" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} disabled={isSubmitting} />
+                <input required type="text" className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-3 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-blue-500/20 outline-none" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">SKU</label>
-                  <input required type="text" className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-3 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-blue-500/20 outline-none font-mono text-sm disabled:opacity-50" value={formData.sku} onChange={e => setFormData({...formData, sku: e.target.value})} disabled={isSubmitting} />
+                  <input required type="text" className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-3 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-blue-500/20 outline-none font-mono text-sm" value={formData.sku} onChange={e => setFormData({...formData, sku: e.target.value})} />
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">Category</label>
-                  <input required type="text" className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-3 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-blue-500/20 outline-none disabled:opacity-50" value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})} disabled={isSubmitting} />
+                  <input required type="text" className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-3 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-blue-500/20 outline-none" value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})} />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
                  <div>
                   <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">Stock Level</label>
-                  <input required type="text" inputMode="decimal" className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-3 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-blue-500/20 outline-none font-bold disabled:opacity-50" value={formData.stock} onChange={e => handleNumericInput('stock', e.target.value)} disabled={isSubmitting} />
+                  <input required type="text" inputMode="decimal" className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-3 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-blue-500/20 outline-none font-bold" value={formData.stock} onChange={e => handleNumericInput('stock', e.target.value)} />
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">Min. Alert</label>
-                  <input required type="text" inputMode="decimal" className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-3 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-blue-500/20 outline-none text-red-500 font-bold disabled:opacity-50" value={formData.minStock} onChange={e => handleNumericInput('minStock', e.target.value)} disabled={isSubmitting} />
+                  <input required type="text" inputMode="decimal" className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-3 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-blue-500/20 outline-none text-red-500 font-bold" value={formData.minStock} onChange={e => handleNumericInput('minStock', e.target.value)} />
                 </div>
               </div>
                <div className="grid grid-cols-2 gap-4">
                  <div>
                   <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">Unit</label>
-                  <input required type="text" className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-3 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-blue-500/20 outline-none disabled:opacity-50" value={formData.unit} onChange={e => setFormData({...formData, unit: e.target.value})} disabled={isSubmitting} />
+                  <input required type="text" className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-3 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-blue-500/20 outline-none" value={formData.unit} onChange={e => setFormData({...formData, unit: e.target.value})} />
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">Base Price</label>
-                  <input required type="text" inputMode="decimal" className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-3 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-blue-500/20 outline-none font-mono disabled:opacity-50" value={formData.price} onChange={e => handleNumericInput('price', e.target.value)} disabled={isSubmitting} />
+                  <input required type="text" inputMode="decimal" className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-3 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-blue-500/20 outline-none font-mono" value={formData.price} onChange={e => handleNumericInput('price', e.target.value)} />
                 </div>
               </div>
 
               <div className="bg-slate-50 dark:bg-slate-800/50 p-5 rounded-2xl border border-slate-200 dark:border-slate-700 mt-2">
                 <div className="flex justify-between items-center mb-4">
                   <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">Variation Units</label>
-                  <button type="button" onClick={addConversion} disabled={isSubmitting} className="text-blue-600 dark:text-blue-400 text-xs flex items-center gap-1.5 font-bold hover:bg-blue-50 dark:hover:bg-blue-900/20 px-2 py-1 rounded transition-colors disabled:opacity-50">
+                  <button type="button" onClick={addConversion} className="text-blue-600 dark:text-blue-400 text-xs flex items-center gap-1.5 font-bold hover:bg-blue-50 dark:hover:bg-blue-900/20 px-2 py-1 rounded transition-colors">
                     <PlusCircle size={14} /> Add Scale
                   </button>
                 </div>
@@ -491,24 +434,22 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ items, onAddIt
                        <span className="text-xs text-slate-400 font-bold ml-1">1</span>
                        <input 
                          type="text" 
-                         className="flex-1 bg-slate-50 dark:bg-slate-900 border-none rounded-lg p-2 text-xs outline-none focus:ring-1 focus:ring-blue-500/30 disabled:opacity-50"
+                         className="flex-1 bg-slate-50 dark:bg-slate-900 border-none rounded-lg p-2 text-xs outline-none focus:ring-1 focus:ring-blue-500/30"
                          value={conv.name}
                          onChange={(e) => updateConversion(idx, 'name', e.target.value)}
                          required
-                         disabled={isSubmitting}
                        />
                        <span className="text-xs text-slate-400 font-bold">=</span>
                        <input 
                          type="text" 
                          inputMode="decimal"
-                         className="w-20 bg-slate-50 dark:bg-slate-900 border-none rounded-lg p-2 text-xs outline-none focus:ring-1 focus:ring-blue-500/30 text-center font-bold disabled:opacity-50"
+                         className="w-20 bg-slate-50 dark:bg-slate-900 border-none rounded-lg p-2 text-xs outline-none focus:ring-1 focus:ring-blue-500/30 text-center font-bold"
                          value={conv.factor.toString()}
                          onChange={(e) => updateConversion(idx, 'factor', e.target.value)}
                          required
-                         disabled={isSubmitting}
                        />
                        <span className="text-xs text-slate-400 font-bold pr-2">{formData.unit}</span>
-                       <button type="button" onClick={() => removeConversion(idx)} disabled={isSubmitting} className="text-slate-300 hover:text-red-500 transition-colors disabled:opacity-50">
+                       <button type="button" onClick={() => removeConversion(idx)} className="text-slate-300 hover:text-red-500 transition-colors">
                          <Trash size={16} />
                        </button>
                     </div>
@@ -517,11 +458,8 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ items, onAddIt
               </div>
               
               <div className="flex justify-end gap-3 mt-8">
-                <button type="button" onClick={() => setIsModalOpen(false)} disabled={isSubmitting} className="px-6 py-3 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl font-bold transition-colors disabled:opacity-50">Discard</button>
-                <button type="submit" disabled={isSubmitting} className="px-8 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold shadow-lg shadow-blue-200 dark:shadow-none transition-all active:scale-95 disabled:opacity-50 flex items-center gap-2">
-                   {isSubmitting && <Loader2 size={18} className="animate-spin" />}
-                   {isSubmitting ? 'Saving...' : 'Save Changes'}
-                </button>
+                <button type="button" onClick={() => setIsModalOpen(false)} className="px-6 py-3 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl font-bold transition-colors">Discard</button>
+                <button type="submit" className="px-8 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold shadow-lg shadow-blue-200 dark:shadow-none transition-all active:scale-95">Save Changes</button>
               </div>
             </form>
           </div>
@@ -536,7 +474,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ items, onAddIt
                    <div className="p-2 bg-green-100 dark:bg-green-900/30 rounded-lg"><FileSpreadsheet size={24} className="text-green-600 dark:text-green-400"/></div>
                    Import Data
                 </h3>
-                <button onClick={() => setIsImportModalOpen(false)} disabled={isSubmitting} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"><X size={20}/></button>
+                <button onClick={() => setIsImportModalOpen(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"><X size={20}/></button>
              </div>
              
              <div className="space-y-8">
@@ -545,8 +483,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ items, onAddIt
                    <p className="text-xs text-blue-600 dark:text-blue-400 mb-4 leading-relaxed">Download our standard Excel template to ensure columns match our system expectations.</p>
                    <button 
                      onClick={handleDownloadTemplate}
-                     disabled={isSubmitting}
-                     className="w-full flex items-center justify-center gap-2 bg-white dark:bg-slate-800 border border-blue-200 dark:border-blue-700 text-blue-600 dark:text-blue-400 px-4 py-3 rounded-xl text-sm font-bold hover:bg-blue-50 dark:hover:bg-blue-900/30 transition-all shadow-sm disabled:opacity-50"
+                     className="w-full flex items-center justify-center gap-2 bg-white dark:bg-slate-800 border border-blue-200 dark:border-blue-700 text-blue-600 dark:text-blue-400 px-4 py-3 rounded-xl text-sm font-bold hover:bg-blue-50 dark:hover:bg-blue-900/30 transition-all shadow-sm"
                    >
                      <Download size={16} /> Download Template (.xlsx)
                    </button>
@@ -556,17 +493,15 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ items, onAddIt
                    <h4 className="text-sm font-bold text-slate-800 dark:text-slate-100 mb-2">Step 2: Upload Files</h4>
                    <p className="text-xs text-slate-500 dark:text-slate-400 mb-4 leading-relaxed">System will auto-generate SKUs and fill missing values with defaults if detected.</p>
                    <div className="flex items-center justify-center w-full">
-                      <label className={`flex flex-col items-center justify-center w-full h-40 border-2 border-slate-300 dark:border-slate-700 border-dashed rounded-2xl cursor-pointer bg-slate-50 dark:bg-slate-800/50 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all group ${isSubmitting ? 'cursor-not-allowed opacity-50' : ''}`}>
+                      <label className="flex flex-col items-center justify-center w-full h-40 border-2 border-slate-300 dark:border-slate-700 border-dashed rounded-2xl cursor-pointer bg-slate-50 dark:bg-slate-800/50 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all group">
                           <div className="flex flex-col items-center justify-center pt-5 pb-6">
                               <div className="p-3 bg-white dark:bg-slate-700 rounded-full shadow-sm mb-3 group-hover:scale-110 transition-transform">
-                                 {isSubmitting ? <Loader2 className="w-6 h-6 animate-spin text-blue-500" /> : <Upload className="w-6 h-6 text-slate-400 dark:text-slate-300" />}
+                                 <Upload className="w-6 h-6 text-slate-400 dark:text-slate-300" />
                               </div>
-                              <p className="mb-1 text-sm text-slate-600 dark:text-slate-300">
-                                <span className="font-bold">{isSubmitting ? 'Processing...' : 'Click to select'}</span> {isSubmitting ? '' : 'or drag file'}
-                              </p>
+                              <p className="mb-1 text-sm text-slate-600 dark:text-slate-300"><span className="font-bold">Click to select</span> or drag file</p>
                               <p className="text-[10px] text-slate-400 dark:text-slate-500 uppercase font-bold tracking-widest">Excel spreadsheets only</p>
                           </div>
-                          <input ref={fileInputRef} type="file" accept=".xlsx" className="hidden" onChange={handleFileUpload} disabled={isSubmitting} />
+                          <input ref={fileInputRef} type="file" accept=".xlsx" className="hidden" onChange={handleFileUpload} />
                       </label>
                   </div>
                 </div>

@@ -28,11 +28,8 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
 }) => {
   const isIncoming = type === 'IN';
   
-  // State for Edit Mode
   const [isEditing, setIsEditing] = useState(false);
   const [transactionId, setTransactionId] = useState('');
-  
-  // Form Fields
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [referenceNumber, setReferenceNumber] = useState('');
   const [supplier, setSupplier] = useState('');
@@ -40,7 +37,6 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
   const [photos, setPhotos] = useState<string[]>([]);
   const [cart, setCart] = useState<TransactionItem[]>([]);
   
-  // Cart Input State
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [inputQty, setInputQty] = useState<string>('');
@@ -48,7 +44,6 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
   const [showAutocomplete, setShowAutocomplete] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(0);
 
-  // UI State
   const [isSaving, setIsSaving] = useState(false);
   const [showSuccessToast, setShowSuccessToast] = useState(false);
   const [showNegativeConfirm, setShowNegativeConfirm] = useState(false);
@@ -58,39 +53,6 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
   const qtyInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const bulkFileRef = useRef<HTMLInputElement>(null);
-
-  // --- Senior Fix: Image Compression to prevent 502/413 errors ---
-  const compressImage = (base64Str: string): Promise<string> => {
-    return new Promise((resolve) => {
-      const img = new Image();
-      img.src = base64Str;
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        const MAX_WIDTH = 800; // Optimal for reports
-        const MAX_HEIGHT = 800;
-        let width = img.width;
-        let height = img.height;
-
-        if (width > height) {
-          if (width > MAX_WIDTH) {
-            height *= MAX_WIDTH / width;
-            width = MAX_WIDTH;
-          }
-        } else {
-          if (height > MAX_HEIGHT) {
-            width *= MAX_HEIGHT / height;
-            height = MAX_HEIGHT;
-          }
-        }
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        ctx?.drawImage(img, 0, 0, width, height);
-        // Compress to 70% quality
-        resolve(canvas.toDataURL('image/jpeg', 0.7));
-      };
-    });
-  };
 
   const handleDownloadTemplate = () => {
     const headers = [["SKU", "Nama Barang", "Qty", "Satuan"]];
@@ -114,7 +76,6 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
     );
   }).slice(0, 8);
 
-  // Populate form when initialData changes
   useEffect(() => {
     if (initialData) {
       setIsEditing(true);
@@ -124,7 +85,7 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
       setSupplier(initialData.supplier || '');
       setNotes(initialData.notes);
       setPhotos(initialData.photos || []);
-      setCart(initialData.items.map(i => ({...i})));
+      setCart([...initialData.items]);
     } else {
       resetForm();
     }
@@ -161,6 +122,7 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
       const sheet = workbook.Sheets[workbook.SheetNames[0]];
       const jsonData: any[][] = XLSX.utils.sheet_to_json(sheet, { header: 1 });
 
+      // Use a map to aggregate by SKU
       const importAggregator = new Map<string, TransactionItem>();
       
       for (let i = 1; i < jsonData.length; i++) {
@@ -272,6 +234,7 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
     setCart(prev => {
       const existingInCart = prev.find(ci => ci.sku.toLowerCase() === skuKey);
       if (existingInCart) {
+        // If same SKU already in cart, just sum up the quantity
         return prev.map(ci => ci.sku.toLowerCase() === skuKey ? { ...ci, quantity: ci.quantity + qtyNum } : ci);
       } else {
         return [...prev, {
@@ -303,11 +266,9 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
     if (!files) return;
     Array.from(files).forEach((file: File) => {
       const reader = new FileReader();
-      reader.onload = async (evt) => {
-        const rawBase64 = evt.target?.result as string;
-        // Compress photo before adding to state
-        const compressed = await compressImage(rawBase64);
-        setPhotos(prev => [...prev, compressed]);
+      reader.onload = (evt) => {
+        const base64 = evt.target?.result as string;
+        setPhotos(prev => [...prev, base64]);
       };
       reader.readAsDataURL(file);
     });
@@ -330,7 +291,7 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
         return originalItem && (originalItem.stock - ci.quantity < 0);
       });
 
-      if (hasNegativeStock && !isEditing) {
+      if (hasNegativeStock) {
         setShowNegativeConfirm(true);
         return;
       }
@@ -342,7 +303,6 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
   const executeSave = async () => {
     setIsSaving(true);
     setShowNegativeConfirm(false);
-    
     const transactionData: Transaction = {
       id: transactionId,
       type,
@@ -364,14 +324,14 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
       setShowSuccessToast(true);
       resetForm();
     } catch (error: any) {
-      console.error("Save Failed:", error);
-      alert(`Gagal menyimpan transaksi: ${error.message || "Kesalahan Server"}`);
+      alert(`Error: ${error.message}`);
     } finally {
       setIsSaving(false);
     }
   };
 
   const handleQtyInput = (value: string) => {
+    // Allow digits and at most one decimal point
     const sanitized = value.replace(/[^0-9.]/g, '');
     const dots = sanitized.split('.').length - 1;
     if (dots > 1) return;
@@ -381,7 +341,7 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
   return (
     <div className="space-y-6 animate-fade-in relative">
       <Toast 
-        message={isEditing ? "Perubahan transaksi berhasil disimpan." : "Transaksi berhasil dicatat ke sistem."} 
+        message="Transaksi berhasil dicatat ke sistem." 
         isVisible={showSuccessToast} 
         onClose={() => setShowSuccessToast(false)} 
       />
@@ -410,18 +370,16 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
       <div className="flex justify-between items-center bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-100 dark:border-slate-800 shadow-sm">
         <h2 className={`text-xl font-bold flex items-center gap-2 ${isIncoming ? 'text-green-600' : 'text-orange-600'}`}>
           {isIncoming ? <ArrowDownLeft size={24} /> : <ArrowUpRight size={24} />}
-          {isEditing ? `Edit Transaksi ${transactionId}` : (isIncoming ? 'Transaksi Masuk' : 'Transaksi Keluar')}
+          {isEditing ? 'Edit Transaksi' : (isIncoming ? 'Transaksi Masuk' : 'Transaksi Keluar')}
         </h2>
         {isEditing && (
-          <button onClick={resetForm} className="text-sm font-bold px-3 py-1.5 bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 rounded-lg transition-colors flex items-center gap-2">
-             <X size={14}/> Batal Edit
-          </button>
+          <button onClick={resetForm} className="text-sm font-medium text-slate-400 hover:text-slate-600">Batal Edit</button>
         )}
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
         <div className="xl:col-span-4 space-y-6">
-           <div className={`bg-white dark:bg-slate-900 p-6 rounded-xl shadow-sm border ${isEditing ? 'border-blue-200 ring-2 ring-blue-500/20' : 'border-slate-100 dark:border-slate-800'}`}>
+           <div className="bg-white dark:bg-slate-900 p-6 rounded-xl shadow-sm border border-slate-100 dark:border-slate-800">
               <h3 className="text-sm font-bold uppercase tracking-wider text-slate-500 mb-4 flex items-center gap-2">
                 <Calendar size={16} /> Informasi Transaksi
               </h3>
@@ -471,14 +429,13 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
                       </button>
                    </div>
                    <input ref={fileInputRef} type="file" multiple accept="image/*" onChange={handlePhotoUpload} className="hidden" />
-                   <p className="text-[10px] text-slate-400 italic">Foto dikompres otomatis agar hemat kuota.</p>
                 </div>
               </div>
            </div>
         </div>
 
         <div className="xl:col-span-8 space-y-6">
-           <div className={`bg-white dark:bg-slate-900 p-6 rounded-xl shadow-sm border ${isEditing ? 'border-blue-200 ring-2 ring-blue-500/20' : 'border-slate-100 dark:border-slate-800'} h-full flex flex-col`}>
+           <div className="bg-white dark:bg-slate-900 p-6 rounded-xl shadow-sm border border-slate-100 dark:border-slate-800 h-full flex flex-col">
               <div className="flex justify-between items-center mb-4">
                  <h3 className="text-sm font-bold uppercase tracking-wider text-slate-500 flex items-center gap-2">
                     Input Barang
@@ -526,10 +483,15 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
                                   <div className={`text-[10px] ${idx === highlightedIndex ? 'text-blue-100' : 'text-slate-400'}`}>{item.sku}</div>
                                 </div>
                                 <div className={`text-xs font-bold px-2 py-1 rounded ${idx === highlightedIndex ? 'bg-blue-500' : 'bg-slate-100 dark:bg-slate-700'}`}>
-                                  {Number(item.stock).toLocaleString('id-ID')} {item.unit}
+                                  {item.stock} {item.unit}
                                 </div>
                               </div>
                             ))}
+                         </div>
+                       )}
+                       {selectedItem && (
+                         <div className="absolute top-1/2 -translate-y-1/2 right-3 text-green-500 flex items-center gap-1 animate-scale-in">
+                            <CheckCircle2 size={16} />
                          </div>
                        )}
                     </div>
@@ -573,7 +535,7 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
                         </td>
                         <td className="px-4 py-3">
                            <span className="font-bold text-slate-900 dark:text-white bg-blue-50 dark:bg-blue-900/20 px-2 py-1 rounded">
-                             {Number(item.quantity).toLocaleString('id-ID')} {item.unit}
+                             {item.quantity} {item.unit}
                            </span>
                         </td>
                         <td className="px-4 py-3 text-right">
@@ -593,7 +555,7 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
                  </div>
                  <button onClick={handleSaveAttempt} disabled={isSaving || cart.length === 0} className={`flex items-center gap-2 px-8 py-3 rounded-xl text-white font-bold shadow-lg transition-all active:scale-95 ${isIncoming ? 'bg-green-600 hover:bg-green-700' : 'bg-orange-600 hover:bg-orange-700'} disabled:opacity-50`}>
                    {isSaving ? <Loader2 size={20} className="animate-spin" /> : <Save size={20} />}
-                   {isSaving ? 'Menyimpan...' : (isEditing ? 'Simpan Perubahan' : 'Simpan Transaksi')}
+                   {isSaving ? 'Menyimpan...' : 'Simpan Transaksi'}
                  </button>
               </div>
            </div>

@@ -1,5 +1,5 @@
 
-import { InventoryItem, Transaction, User, RejectItem, RejectTransaction, Playlist, PlaylistItem } from '../types';
+import { InventoryItem, Transaction, User, RejectItem, RejectTransaction } from '../types';
 
 const API_URL = '/api';
 
@@ -7,189 +7,139 @@ const headers = {
   'Content-Type': 'application/json',
 };
 
-/**
- * Enterprise-Grade Response Handler
- */
-const handleResponse = async (res: Response) => {
-  const contentType = res.headers.get('content-type');
-  
-  if (!contentType || !contentType.includes('application/json')) {
-    if (res.status === 502) {
-      throw new Error(`Server Error (502 Bad Gateway): VPS Backend tidak merespons. Pastikan Port 3010 di Firewall VPS sudah OPEN.`);
-    }
-    throw new Error(`Server Error (${res.status}): Respons bukan JSON.`);
-  }
-
-  const data = await res.json();
-  if (!res.ok) {
-    throw new Error(data.message || data.error || `Request failed (${res.status})`);
-  }
-  return data;
-};
-
 export const api = {
-  /**
-   * Pengecekan status server yang disinkronkan dengan server/index.js
-   */
-  checkConnection: async (): Promise<{ online: boolean; db: boolean }> => {
+  checkConnection: async (): Promise<boolean> => {
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 4000);
+      
+      // Request ke /api/health
       const res = await fetch(`${API_URL}/health`, { 
-        method: 'GET',
-        cache: 'no-store',
-        headers: { 'Accept': 'application/json' }
+        method: 'GET', 
+        signal: controller.signal,
+        cache: 'no-store'
       });
       
+      clearTimeout(timeoutId);
+      
       if (res.ok) {
-        const json = await res.json();
-        // Mapping: server mengembalikan { success: true, data: { database: true } }
-        return { 
-          online: json.success === true, 
-          db: json.data?.database === true 
-        };
+        const data = await res.json();
+        return data.status === 'online';
       }
-      return { online: false, db: false };
+      return false;
     } catch (e) {
-      console.error("Connection check failed:", e);
-      return { online: false, db: false };
+      console.warn("API Connection Check Failed:", e);
+      return false;
     }
   },
 
-  login: async (username: string, password: string) => {
-    const res = await fetch(`${API_URL}/login`, { method: 'POST', headers, body: JSON.stringify({ username, password }) });
-    const data = await handleResponse(res);
-    return data.success ? data.data : null;
+  login: async (username: string, password: string): Promise<User | null> => {
+    const res = await fetch(`${API_URL}/login`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ username, password }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.success ? data.user : null;
   },
 
-  // --- INVENTORY ---
-  getInventory: async () => {
-    const res = await fetch(`${API_URL}/inventory`);
-    const data = await handleResponse(res);
-    return Array.isArray(data) ? data : (data.data || []);
+  getInventory: async (): Promise<InventoryItem[]> => {
+    try {
+        const res = await fetch(`${API_URL}/inventory`);
+        if(!res.ok) return [];
+        return res.json();
+    } catch (e) { return []; }
   },
+  
   addInventory: async (item: InventoryItem) => {
-    const res = await fetch(`${API_URL}/inventory`, { method: 'POST', headers, body: JSON.stringify(item) });
-    return await handleResponse(res);
+    await fetch(`${API_URL}/inventory`, { method: 'POST', headers, body: JSON.stringify(item) });
   },
   updateInventory: async (item: InventoryItem) => {
-    const res = await fetch(`${API_URL}/inventory/${encodeURIComponent(item.id)}`, { method: 'PUT', headers, body: JSON.stringify(item) });
-    return await handleResponse(res);
+    await fetch(`${API_URL}/inventory/${item.id}`, { method: 'PUT', headers, body: JSON.stringify(item) });
   },
   deleteInventory: async (id: string) => {
-    const res = await fetch(`${API_URL}/inventory/${encodeURIComponent(id)}`, { method: 'DELETE' });
-    return await handleResponse(res);
+    await fetch(`${API_URL}/inventory/${id}`, { method: 'DELETE' });
   },
   deleteInventoryBulk: async (ids: string[]) => {
-    const res = await fetch(`${API_URL}/inventory/bulk-delete`, { method: 'POST', headers, body: JSON.stringify({ ids }) });
-    return await handleResponse(res);
+    const res = await fetch(`${API_URL}/inventory/bulk-delete`, { 
+        method: 'POST', 
+        headers, 
+        body: JSON.stringify({ ids }) 
+    });
+    if (!res.ok) throw new Error("Gagal menghapus item secara massal");
+    return res.json();
   },
 
-  // --- TRANSACTIONS ---
-  getTransactions: async () => {
-    const res = await fetch(`${API_URL}/transactions`);
-    const data = await handleResponse(res);
-    return Array.isArray(data) ? data : (data.data || []);
+  // Transactions
+  getTransactions: async (): Promise<Transaction[]> => {
+    try {
+        const res = await fetch(`${API_URL}/transactions`);
+        if(!res.ok) {
+            const errData = await res.json().catch(() => ({}));
+            console.error("Server returned error:", res.status, errData);
+            return [];
+        }
+        return res.json();
+    } catch (e) { 
+        console.error("Network error fetching transactions:", e); 
+        return []; 
+    }
   },
   addTransaction: async (tx: Transaction) => {
     const res = await fetch(`${API_URL}/transactions`, { method: 'POST', headers, body: JSON.stringify(tx) });
-    return await handleResponse(res);
+    if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || "Gagal menyimpan transaksi");
+    }
   },
   updateTransaction: async (tx: Transaction) => {
-    const res = await fetch(`${API_URL}/transactions/${encodeURIComponent(tx.id)}`, { method: 'PUT', headers, body: JSON.stringify(tx) });
-    return await handleResponse(res);
+    await fetch(`${API_URL}/transactions/${tx.id}`, { method: 'PUT', headers, body: JSON.stringify(tx) });
   },
   deleteTransaction: async (id: string) => {
-    const res = await fetch(`${API_URL}/transactions/${encodeURIComponent(id)}`, { method: 'DELETE' });
-    return await handleResponse(res);
+    const res = await fetch(`${API_URL}/transactions/${id}`, { method: 'DELETE' });
+    if (!res.ok) throw new Error("Gagal menghapus transaksi");
   },
 
-  // --- USERS ---
-  getUsers: async () => {
+  // Users
+  getUsers: async (): Promise<User[]> => {
     const res = await fetch(`${API_URL}/users`);
-    const data = await handleResponse(res);
-    return Array.isArray(data) ? data : (data.data || []);
+    return res.ok ? res.json() : [];
   },
-  addUser: async (u: User) => {
-    const res = await fetch(`${API_URL}/users`, { method: 'POST', headers, body: JSON.stringify(u) });
-    return await handleResponse(res);
+  addUser: async (user: User) => {
+    await fetch(`${API_URL}/users`, { method: 'POST', headers, body: JSON.stringify(user) });
   },
-  updateUser: async (u: User) => {
-    const res = await fetch(`${API_URL}/users/${encodeURIComponent(u.id)}`, { method: 'PUT', headers, body: JSON.stringify(u) });
-    return await handleResponse(res);
+  updateUser: async (user: User) => {
+    await fetch(`${API_URL}/users/${user.id}`, { method: 'PUT', headers, body: JSON.stringify(user) });
   },
   deleteUser: async (id: string) => {
-    const res = await fetch(`${API_URL}/users/${encodeURIComponent(id)}`, { method: 'DELETE' });
-    return await handleResponse(res);
+    await fetch(`${API_URL}/users/${id}`, { method: 'DELETE' });
   },
 
-  // --- REJECT MODULE ---
-  getRejectMaster: async () => {
+  // Reject Master Data
+  getRejectMaster: async (): Promise<RejectItem[]> => {
     const res = await fetch(`${API_URL}/reject/master`);
-    const data = await handleResponse(res);
-    return Array.isArray(data) ? data : (data.data || []);
+    return res.ok ? res.json() : [];
   },
   addRejectMaster: async (item: RejectItem) => {
-    const res = await fetch(`${API_URL}/reject/master`, { method: 'POST', headers, body: JSON.stringify(item) });
-    return await handleResponse(res);
-  },
-  updateRejectMaster: async (item: RejectItem) => {
-    const cleanId = String(item.id).replace(/:/g, '-').trim();
-    const res = await fetch(`${API_URL}/reject/master/${encodeURIComponent(cleanId)}`, { 
-      method: 'PUT', 
-      headers, 
-      body: JSON.stringify({ ...item, id: cleanId }) 
-    });
-    return await handleResponse(res);
+    await fetch(`${API_URL}/reject/master`, { method: 'POST', headers, body: JSON.stringify(item) });
   },
   deleteRejectMaster: async (id: string) => {
-    const cleanId = String(id).replace(/:/g, '-').trim();
-    const res = await fetch(`${API_URL}/reject/master/${encodeURIComponent(cleanId)}`, { method: 'DELETE' });
-    return await handleResponse(res);
+    await fetch(`${API_URL}/reject/master/${id}`, { method: 'DELETE' });
   },
-  deleteRejectMasterBulk: async (ids: string[]) => {
-    const res = await fetch(`${API_URL}/reject/master/bulk`, { method: 'DELETE', headers, body: JSON.stringify({ ids }) });
-    return await handleResponse(res);
-  },
-  getRejectTransactions: async () => {
+
+  // Reject Transactions
+  getRejectTransactions: async (): Promise<RejectTransaction[]> => {
     const res = await fetch(`${API_URL}/reject/transactions`);
-    const data = await handleResponse(res);
-    return Array.isArray(data) ? data : (data.data || []);
+    return res.ok ? res.json() : [];
   },
   addRejectTransaction: async (tx: RejectTransaction) => {
-    const res = await fetch(`${API_URL}/reject/transactions`, { method: 'POST', headers, body: JSON.stringify(tx) });
-    return await handleResponse(res);
+    await fetch(`${API_URL}/reject/transactions`, { method: 'POST', headers, body: JSON.stringify(tx) });
   },
 
-  // --- MEDIA PLAYER ---
-  getPlaylists: async () => {
-    const res = await fetch(`${API_URL}/playlists`);
-    const data = await handleResponse(res);
-    return Array.isArray(data) ? data : (data.data || []);
-  },
-  createPlaylist: async (name: string) => {
-    const res = await fetch(`${API_URL}/playlists`, { method: 'POST', headers, body: JSON.stringify({ id: `PL-${Date.now()}`, name }) });
-    return await handleResponse(res);
-  },
-  deletePlaylist: async (id: string) => {
-    const res = await fetch(`${API_URL}/playlists/${encodeURIComponent(id)}`, { method: 'DELETE' });
-    return await handleResponse(res);
-  },
-  getPlaylistItems: async (pid: string) => {
-    const res = await fetch(`${API_URL}/playlists/${encodeURIComponent(pid)}/items`);
-    const data = await handleResponse(res);
-    return Array.isArray(data) ? data : (data.data || []);
-  },
-  addPlaylistItem: async (pid: string, item: any) => {
-    const res = await fetch(`${API_URL}/playlists/${encodeURIComponent(pid)}/items`, { method: 'POST', headers, body: JSON.stringify(item) });
-    return await handleResponse(res);
-  },
-  deletePlaylistItem: async (id: string) => {
-    const res = await fetch(`${API_URL}/playlists/items/${encodeURIComponent(id)}`, { method: 'DELETE' });
-    return await handleResponse(res);
-  },
-
-  // --- SYSTEM ---
-  resetDatabase: async () => {
+  // System
+  resetDatabase: async (): Promise<{ success: boolean; message?: string; error?: string }> => {
     const res = await fetch(`${API_URL}/system/reset`, { method: 'POST', headers });
-    return await handleResponse(res);
+    return res.json();
   }
 };
