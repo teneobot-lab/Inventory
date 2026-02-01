@@ -57,7 +57,11 @@ const sendRes = (res, code, success, message, data = null) => {
 };
 
 const handleError = (res, err, customMsg = "Internal Server Error") => {
-    console.error("CRITICAL_ERROR:", err);
+    console.error("CRITICAL_SERVER_ERROR:", {
+        message: err.message,
+        stack: err.stack,
+        custom: customMsg
+    });
     sendRes(res, 500, false, customMsg, err.message);
 };
 
@@ -287,7 +291,7 @@ app.get('/api/reject/master', async (req, res) => {
 app.post('/api/reject/master', async (req, res) => {
     const item = req.body;
     try {
-        // ERP HARDENING: Generate ID on server if client doesn't provide one
+        // ERP HARDENING: Generate ID on server using alphanumeric only to avoid URL special chars
         const finalId = item.id || `REJ-${Date.now()}-${Math.floor(Math.random()*1000)}`;
         const sql = `INSERT INTO reject_master (id, name, sku, category, base_unit, conversions) VALUES (?, ?, ?, ?, ?, ?)`;
         await pool.query(sql, [finalId, item.name, item.sku, item.category, item.baseUnit, JSON.stringify(item.conversions || [])]);
@@ -296,6 +300,9 @@ app.post('/api/reject/master', async (req, res) => {
 });
 
 app.put('/api/reject/master/:id', async (req, res) => {
+    const requestId = req.params.id;
+    console.log(`[API] PUT Reject Master Request ID: ${requestId}`);
+    
     try {
         const body = req.body || {};
         const payload = {
@@ -307,6 +314,7 @@ app.put('/api/reject/master/:id', async (req, res) => {
         };
 
         if (!payload.name || !payload.baseUnit) {
+            console.warn(`[API] Reject Master Update Validation Failed for ID: ${requestId}`);
             return sendRes(res, 422, false, "Nama & satuan dasar wajib diisi");
         }
 
@@ -320,18 +328,20 @@ app.put('/api/reject/master/:id', async (req, res) => {
                 payload.category,
                 payload.baseUnit,
                 JSON.stringify(payload.conversions),
-                req.params.id
+                requestId
             ]
         );
 
         if (result.affectedRows === 0) {
-            return sendRes(res, 404, false, "Data reject tidak ditemukan");
+            console.warn(`[API] Reject Master Update: ID NOT FOUND - ${requestId}`);
+            return sendRes(res, 404, false, "Data reject tidak ditemukan di database");
         }
 
+        console.log(`[API] Reject Master Update SUCCESS for ID: ${requestId}`);
         sendRes(res, 200, true, "Master reject diperbarui");
     } catch (err) {
-        console.error("PUT REJECT ERROR:", err);
-        sendRes(res, 500, false, "Gagal update master reject");
+        console.error("PUT REJECT ERROR DETAILED:", err);
+        handleError(res, err, "Gagal update master reject. Cek koneksi database.");
     }
 });
 
@@ -474,8 +484,9 @@ app.post('/api/system/reset', async (req, res) => {
         handleError(res, err);
     } finally { if (conn) conn.release(); }
 });
+
 app.use((err, req, res, next) => {
-    console.error("UNHANDLED ERROR:", err);
+    console.error("UNHANDLED_MIDDLEWARE_ERROR:", err);
     res.status(500).json({
         success: false,
         message: "Unhandled server error",
@@ -486,5 +497,6 @@ app.use((err, req, res, next) => {
 
 // --- START SERVER ---
 app.listen(PORT, '0.0.0.0', () => {
-    console.log(`SmartInventory Pro API Fixed v1.0.2 - PORT ${PORT}`);
+    console.log(`SmartInventory Pro API Fixed v1.0.3 - PORT ${PORT}`);
+    console.log(`DB Host: ${dbConfig.host}`);
 });

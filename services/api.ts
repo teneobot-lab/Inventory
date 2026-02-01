@@ -18,19 +18,13 @@ const handleResponse = async (res: Response) => {
   if (!contentType || !contentType.includes('application/json')) {
     const textError = await res.text();
     console.error("Non-JSON Error Response:", textError);
-    throw new Error(`Server Error (${res.status}): Layanan tidak tersedia atau sedang gangguan.`);
+    throw new Error(`Server Error (${res.status}): Gateway Backend tidak merespons (Bad Gateway). Pastikan Server VPS & Port Aktif.`);
   }
 
   const data = await res.json();
 
   if (!res.ok) {
-    // Gunakan pesan error dari backend jika ada, jika tidak gunakan fallback
     throw new Error(data.message || data.error || `Request failed with status ${res.status}`);
-  }
-
-  // Khusus untuk DELETE atau response tanpa body data
-  if (res.status === 204 || res.headers.get('content-length') === '0') {
-      return true;
   }
   
   return data;
@@ -40,7 +34,7 @@ export const api = {
   checkConnection: async (): Promise<{online: boolean, db: boolean}> => {
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 8000);
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
       
       const res = await fetch(`${API_URL}/health`, { 
         method: 'GET', 
@@ -64,17 +58,13 @@ export const api = {
   },
 
   login: async (username: string, password: string): Promise<User | null> => {
-    try {
-      const res = await fetch(`${API_URL}/login`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ username, password }),
-      });
-      const data = await handleResponse(res);
-      return data.success ? data.data : null;
-    } catch (e) {
-      throw e;
-    }
+    const res = await fetch(`${API_URL}/login`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ username, password }),
+    });
+    const data = await handleResponse(res);
+    return data.success ? data.data : null;
   },
 
   getInventory: async (): Promise<InventoryItem[]> => {
@@ -90,11 +80,11 @@ export const api = {
     return await handleResponse(res);
   },
   updateInventory: async (item: InventoryItem) => {
-    const res = await fetch(`${API_URL}/inventory/${item.id}`, { method: 'PUT', headers, body: JSON.stringify(item) });
+    const res = await fetch(`${API_URL}/inventory/${encodeURIComponent(item.id)}`, { method: 'PUT', headers, body: JSON.stringify(item) });
     return await handleResponse(res);
   },
   deleteInventory: async (id: string) => {
-    const res = await fetch(`${API_URL}/inventory/${id}`, { method: 'DELETE' });
+    const res = await fetch(`${API_URL}/inventory/${encodeURIComponent(id)}`, { method: 'DELETE' });
     return await handleResponse(res);
   },
   deleteInventoryBulk: async (ids: string[]) => {
@@ -118,11 +108,11 @@ export const api = {
     return await handleResponse(res);
   },
   updateTransaction: async (tx: Transaction) => {
-    const res = await fetch(`${API_URL}/transactions/${tx.id}`, { method: 'PUT', headers, body: JSON.stringify(tx) });
+    const res = await fetch(`${API_URL}/transactions/${encodeURIComponent(tx.id)}`, { method: 'PUT', headers, body: JSON.stringify(tx) });
     return await handleResponse(res);
   },
   deleteTransaction: async (id: string) => {
-    const res = await fetch(`${API_URL}/transactions/${id}`, { method: 'DELETE' });
+    const res = await fetch(`${API_URL}/transactions/${encodeURIComponent(id)}`, { method: 'DELETE' });
     return await handleResponse(res);
   },
 
@@ -138,11 +128,11 @@ export const api = {
     return await handleResponse(res);
   },
   updateUser: async (user: User) => {
-    const res = await fetch(`${API_URL}/users/${user.id}`, { method: 'PUT', headers, body: JSON.stringify(user) });
+    const res = await fetch(`${API_URL}/users/${encodeURIComponent(user.id)}`, { method: 'PUT', headers, body: JSON.stringify(user) });
     return await handleResponse(res);
   },
   deleteUser: async (id: string) => {
-    const res = await fetch(`${API_URL}/users/${id}`, { method: 'DELETE' });
+    const res = await fetch(`${API_URL}/users/${encodeURIComponent(id)}`, { method: 'DELETE' });
     return await handleResponse(res);
   },
 
@@ -158,11 +148,16 @@ export const api = {
     return await handleResponse(res);
   },
   updateRejectMaster: async (item: RejectItem) => {
-    const res = await fetch(`${API_URL}/reject/master/${item.id}`, { method: 'PUT', headers, body: JSON.stringify(item) });
+    // FIX: URL Encoding ID untuk mencegah kegagalan proxy gateway
+    const res = await fetch(`${API_URL}/reject/master/${encodeURIComponent(item.id)}`, { 
+      method: 'PUT', 
+      headers, 
+      body: JSON.stringify(item) 
+    });
     return await handleResponse(res);
   },
   deleteRejectMaster: async (id: string) => {
-    const res = await fetch(`${API_URL}/reject/master/${id}`, { method: 'DELETE' });
+    const res = await fetch(`${API_URL}/reject/master/${encodeURIComponent(id)}`, { method: 'DELETE' });
     return await handleResponse(res);
   },
   deleteRejectMasterBulk: async (ids: string[]) => {
@@ -199,22 +194,22 @@ export const api = {
     return await handleResponse(res);
   },
   deletePlaylist: async (id: string) => {
-    const res = await fetch(`${API_URL}/playlists/${id}`, { method: 'DELETE' });
+    const res = await fetch(`${API_URL}/playlists/${encodeURIComponent(id)}`, { method: 'DELETE' });
     return await handleResponse(res);
   },
   getPlaylistItems: async (playlistId: string): Promise<PlaylistItem[]> => {
     try {
-      const res = await fetch(`${API_URL}/playlists/${playlistId}/items`);
+      const res = await fetch(`${API_URL}/playlists/${encodeURIComponent(playlistId)}/items`);
       const data = await handleResponse(res);
       return Array.isArray(data) ? data : (data.data || []);
     } catch (e) { return []; }
   },
   addPlaylistItem: async (playlistId: string, item: Partial<PlaylistItem>) => {
-    const res = await fetch(`${API_URL}/playlists/${playlistId}/items`, { method: 'POST', headers, body: JSON.stringify(item) });
+    const res = await fetch(`${API_URL}/playlists/${encodeURIComponent(playlistId)}/items`, { method: 'POST', headers, body: JSON.stringify(item) });
     return await handleResponse(res);
   },
   deletePlaylistItem: async (itemId: string) => {
-    const res = await fetch(`${API_URL}/playlists/items/${itemId}`, { method: 'DELETE' });
+    const res = await fetch(`${API_URL}/playlists/items/${encodeURIComponent(itemId)}`, { method: 'DELETE' });
     return await handleResponse(res);
   },
 
