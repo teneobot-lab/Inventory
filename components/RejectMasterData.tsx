@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useMemo } from 'react';
 import { RejectItem, InventoryUnitConversion } from '../types';
 import { 
@@ -15,9 +16,10 @@ interface RejectMasterDataProps {
   onBulkDelete?: (ids: string[]) => void;
 }
 
-interface UIConversion extends InventoryUnitConversion {
-    operator: '*' | '/';
-    inputValue: number;
+// UI interface uses a 'divisor' instead of factor directly for better UX in division-only mode
+interface UIConversion {
+    name: string;
+    divisor: number;
 }
 
 export const RejectMasterData: React.FC<RejectMasterDataProps> = ({ 
@@ -67,10 +69,11 @@ export const RejectMasterData: React.FC<RejectMasterDataProps> = ({
 
   const handleBulkDeleteAction = () => {
     if (selectedIds.size === 0) return;
-    if (confirm(`Hapus ${selectedIds.size} item master data terpilih secara permanen?`)) {
+    if (confirm(`Hapus ${selectedIds.size} master barang reject secara permanen?`)) {
         if (onBulkDelete) {
             onBulkDelete(Array.from(selectedIds));
         } else {
+            // Fallback strategy
             selectedIds.forEach(id => onDeleteItem(id));
         }
         setSelectedIds(new Set());
@@ -83,17 +86,12 @@ export const RejectMasterData: React.FC<RejectMasterDataProps> = ({
         setEditingItem(item);
         setFormData({ ...item });
         
-        // REFINED: Map internal multiplier factor back to user-friendly UI logic
-        // If factor < 1 (e.g. 0.001), UI will show operator "/" and ratio 1000
-        const uiConvs: UIConversion[] = (item.conversions || []).map(c => {
-            const isDivide = c.factor < 1 && c.factor !== 0;
-            return {
-                name: c.name,
-                factor: c.factor,
-                operator: isDivide ? '/' : '*',
-                inputValue: isDivide ? parseFloat((1 / c.factor).toFixed(8)) : c.factor
-            };
-        });
+        // Convert stored factors back to divisors for UI
+        // Factor = BaseValue / Divisor -> Divisor = 1 / Factor
+        const uiConvs: UIConversion[] = (item.conversions || []).map(c => ({
+            name: c.name,
+            divisor: c.factor !== 0 ? parseFloat((1 / c.factor).toFixed(6)) : 1
+        }));
         setUiConversions(uiConvs);
     } else {
         setEditingItem(null);
@@ -106,23 +104,13 @@ export const RejectMasterData: React.FC<RejectMasterDataProps> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
-    // LOGIKA KRUSIAL: Konversi input UI ke factor pengali dasar untuk disimpan di DB
-    // Contoh 1 (Pembagian): GR -> KG (Base). User input: Rasio 1000, Operator '/'.
-    // Maka factor disimpan = 1 / 1000 = 0.001.
-    // Contoh 2 (Perkalian): DUS -> KG (Base). User input: Rasio 5, Operator '*'.
-    // Maka factor disimpan = 5.
-    const finalConversions: InventoryUnitConversion[] = uiConversions.map(c => {
-        let factor = 1;
-        if (c.operator === '*') {
-            factor = c.inputValue || 1;
-        } else {
-            factor = (c.inputValue && c.inputValue !== 0) ? (1 / c.inputValue) : 1;
-        }
-        return {
-            name: c.name.toUpperCase(),
-            factor: parseFloat(factor.toFixed(8)) 
-        };
-    });
+    // Logika Unit Kecil (Divide Mode): 
+    // Jika input "1000" untuk unit "GR" ke base "KG", 
+    // maka 1 GR = 1/1000 KG. Factor = 0.001.
+    const finalConversions: InventoryUnitConversion[] = uiConversions.map(c => ({
+        name: c.name.toUpperCase(),
+        factor: c.divisor !== 0 ? parseFloat((1 / c.divisor).toFixed(8)) : 1
+    }));
 
     const payload = {
       ...formData,
@@ -136,10 +124,7 @@ export const RejectMasterData: React.FC<RejectMasterDataProps> = ({
   };
 
   const addConversion = () => {
-    setUiConversions([
-        ...uiConversions, 
-        { name: '', factor: 1, operator: '/', inputValue: 1000 } 
-    ]);
+    setUiConversions([...uiConversions, { name: '', divisor: 1000 }]);
   };
 
   const updateConversion = (index: number, field: keyof UIConversion, value: any) => {
@@ -156,11 +141,11 @@ export const RejectMasterData: React.FC<RejectMasterDataProps> = ({
 
   return (
     <div className="space-y-6 animate-fade-in pb-10">
-      {/* Header */}
+      {/* Header with Title and Global Actions */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h2 className="text-2xl font-black text-slate-800 dark:text-white uppercase tracking-tighter">Master Data Reject</h2>
-          <p className="text-sm text-slate-500 font-medium">Manajemen katalog barang khusus untuk pencatatan reject.</p>
+          <p className="text-sm text-slate-500 font-medium italic">Katalog acuan untuk standarisasi laporan barang rusak.</p>
         </div>
         <div className="flex flex-wrap gap-2 w-full md:w-auto">
           <button onClick={() => fileInputRef.current?.click()} className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400 px-5 py-2.5 rounded-xl border border-emerald-100 dark:border-emerald-800 hover:bg-emerald-100 transition-all text-sm font-bold shadow-sm">
@@ -173,23 +158,28 @@ export const RejectMasterData: React.FC<RejectMasterDataProps> = ({
         </div>
       </div>
 
-      {/* Floating Bulk Action Bar */}
+      {/* Floating Action Bar for Multiple Selection */}
       {selectedIds.size > 0 && (
-        <div className="bg-slate-900 text-white p-4 rounded-2xl flex items-center justify-between shadow-2xl animate-in slide-in-from-top-4 duration-300 sticky top-4 z-40 border border-white/10">
-            <div className="flex items-center gap-3">
-                <div className="bg-blue-600 p-2 rounded-lg"><CheckSquare size={20} /></div>
-                <span className="font-black uppercase tracking-widest text-xs">{selectedIds.size} Master Barang Dipilih</span>
+        <div className="bg-slate-900 text-white p-4 rounded-2xl flex items-center justify-between shadow-2xl animate-in slide-in-from-top-4 duration-300 sticky top-4 z-40 border border-white/10 ring-4 ring-blue-500/20">
+            <div className="flex items-center gap-4 ml-2">
+                <div className="bg-blue-600 p-2.5 rounded-xl">
+                    <CheckSquare size={24} />
+                </div>
+                <div>
+                    <span className="font-black uppercase tracking-[0.2em] text-sm">{selectedIds.size} Barang Terpilih</span>
+                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Batch Action Ready</p>
+                </div>
             </div>
-            <div className="flex gap-2">
-                <button onClick={() => setSelectedIds(new Set())} className="px-4 py-2 text-[10px] font-black uppercase tracking-widest hover:bg-white/10 rounded-xl">Batal</button>
-                <button onClick={handleBulkDeleteAction} className="flex items-center gap-2 bg-red-500 text-white px-5 py-2 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-red-600 transition-colors shadow-lg">
-                    <Trash size={14} /> Hapus Massal
+            <div className="flex gap-3">
+                <button onClick={() => setSelectedIds(new Set())} className="px-6 py-2.5 text-[10px] font-black uppercase tracking-widest hover:bg-white/10 rounded-xl transition-all border border-transparent hover:border-slate-700">Batalkan</button>
+                <button onClick={handleBulkDeleteAction} className="flex items-center gap-2 bg-red-500 text-white px-8 py-2.5 rounded-xl font-black text-[11px] uppercase tracking-widest hover:bg-red-600 transition-all shadow-lg active:scale-95">
+                    <Trash size={16} strokeWidth={3}/> Hapus Terpilih
                 </button>
             </div>
         </div>
       )}
 
-      {/* Main Table */}
+      {/* Main Catalog Table */}
       <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] shadow-sm border border-slate-100 dark:border-slate-800 overflow-hidden">
         <div className="p-6 border-b border-slate-50 dark:border-slate-800 flex items-center gap-4">
           <div className="relative flex-1 max-w-sm">
@@ -210,7 +200,7 @@ export const RejectMasterData: React.FC<RejectMasterDataProps> = ({
                 <th className="px-6 py-4">Informasi Produk</th>
                 <th className="px-6 py-4">Kategori</th>
                 <th className="px-6 py-4 text-center">Satuan Dasar</th>
-                <th className="px-6 py-4">Konversi (Rasio)</th>
+                <th className="px-6 py-4">Konversi Rasio</th>
                 <th className="px-6 py-4 text-right">Aksi</th>
               </tr>
             </thead>
@@ -244,18 +234,25 @@ export const RejectMasterData: React.FC<RejectMasterDataProps> = ({
                   </td>
                   <td className="px-6 py-5 text-right">
                     <div className="flex justify-end gap-2">
-                        <button onClick={() => handleOpenModal(item)} className="p-2.5 text-slate-400 hover:text-blue-600 hover:bg-white dark:hover:bg-slate-800 rounded-xl transition-all shadow-sm border border-transparent hover:border-slate-100" title="Edit Item"><Edit size={18} /></button>
-                        <button onClick={() => { if(confirm('Hapus master barang reject ini?')) onDeleteItem(item.id); }} className="p-2.5 text-slate-400 hover:text-red-500 hover:bg-white dark:hover:bg-slate-800 rounded-xl transition-all shadow-sm border border-transparent hover:border-slate-100" title="Hapus Item"><Trash2 size={18} /></button>
+                        <button onClick={() => handleOpenModal(item)} className="p-2.5 text-slate-400 hover:text-blue-600 hover:bg-white dark:hover:bg-slate-800 rounded-xl transition-all shadow-sm border border-transparent hover:border-slate-100"><Edit size={18} /></button>
+                        <button onClick={() => { if(confirm('Hapus master barang ini?')) onDeleteItem(item.id); }} className="p-2.5 text-slate-400 hover:text-red-500 hover:bg-white dark:hover:bg-slate-800 rounded-xl transition-all shadow-sm border border-transparent hover:border-slate-100"><Trash2 size={18} /></button>
                     </div>
                   </td>
                 </tr>
               ))}
+              {filteredItems.length === 0 && (
+                <tr>
+                    <td colSpan={6} className="p-20 text-center text-slate-300 italic text-sm">
+                        Data master tidak ditemukan atau masih kosong.
+                    </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
       </div>
 
-      {/* Modal Add / Edit */}
+      {/* CRUD MODAL */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-xl flex items-center justify-center z-[100] p-4 animate-in fade-in duration-300">
           <div className="bg-white dark:bg-slate-900 rounded-[3.5rem] shadow-[0_32px_128px_-16px_rgba(0,0,0,0.5)] w-full max-w-2xl p-10 animate-in zoom-in duration-300 max-h-[90vh] overflow-y-auto border border-white/20">
@@ -266,7 +263,7 @@ export const RejectMasterData: React.FC<RejectMasterDataProps> = ({
                   </div>
                   <div>
                     <h3 className="text-3xl font-black text-slate-800 dark:text-white uppercase tracking-tighter leading-none">{editingItem ? 'Edit Master Reject' : 'Tambah Master Baru'}</h3>
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.4em] mt-1 text-center">Sistem Konversi Rasio Presisi</p>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.4em] mt-1 text-center">Sistem Konversi Rasio Pembagi</p>
                   </div>
                </div>
                <button onClick={() => setIsModalOpen(false)} className="text-slate-300 hover:text-slate-600 dark:hover:text-white p-2 transition-colors"><X size={32}/></button>
@@ -281,7 +278,7 @@ export const RejectMasterData: React.FC<RejectMasterDataProps> = ({
                <div className="grid grid-cols-2 gap-6">
                  <div className="space-y-2">
                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">SKU Barang</label>
-                   <input required className="w-full bg-slate-50 dark:bg-slate-800 border-2 border-transparent focus:border-blue-500 rounded-[1.5rem] p-5 outline-none font-mono font-black text-lg dark:text-white shadow-inner transition-all uppercase" placeholder="SKU-XXXX" value={formData.sku} onChange={e => setFormData({...formData, sku: e.target.value.toUpperCase()})} />
+                   <input required className="w-full bg-slate-50 dark:bg-slate-800 border-2 border-transparent focus:border-blue-500 rounded-[1.5rem] p-5 outline-none font-mono font-black text-lg dark:text-white shadow-inner transition-all uppercase placeholder:text-slate-300" value={formData.sku} onChange={e => setFormData({...formData, sku: e.target.value.toUpperCase()})} />
                  </div>
                  <div className="space-y-2">
                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Kategori</label>
@@ -290,8 +287,8 @@ export const RejectMasterData: React.FC<RejectMasterDataProps> = ({
                </div>
 
                <div className="space-y-2">
-                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4 text-center block">Satuan Dasar (UTAMA)</label>
-                 <input required placeholder="KG / PCS" className="w-full bg-blue-50 dark:bg-blue-900/20 border-2 border-transparent focus:border-blue-500 rounded-[1.5rem] p-5 outline-none font-black text-2xl text-blue-600 uppercase tracking-widest shadow-inner text-center" value={formData.baseUnit} onChange={e => setFormData({...formData, baseUnit: e.target.value.toUpperCase()})} />
+                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4 text-center block">Satuan Dasar Utama (Acuan Stok)</label>
+                 <input required placeholder="KG / PCS / DUS" className="w-full bg-blue-50 dark:bg-blue-900/20 border-2 border-transparent focus:border-blue-500 rounded-[1.5rem] p-5 outline-none font-black text-2xl text-blue-600 uppercase tracking-widest shadow-inner text-center" value={formData.baseUnit} onChange={e => setFormData({...formData, baseUnit: e.target.value.toUpperCase()})} />
                </div>
 
                <div className="p-8 bg-slate-50 dark:bg-slate-800/50 rounded-[2.5rem] border border-slate-100 dark:border-slate-700 space-y-6 shadow-inner relative overflow-hidden">
@@ -299,7 +296,7 @@ export const RejectMasterData: React.FC<RejectMasterDataProps> = ({
                   <div className="flex justify-between items-center relative z-10">
                     <div className="flex items-center gap-3 text-blue-600">
                         <PlusCircle size={20} strokeWidth={3} />
-                        <label className="text-xs font-black uppercase tracking-[0.3em]">Konversi Satuan Lain</label>
+                        <label className="text-xs font-black uppercase tracking-[0.3em]">Unit Pembagi (Sub-Unit)</label>
                     </div>
                     <button type="button" onClick={addConversion} className="text-white text-[10px] font-black bg-blue-600 px-5 py-2.5 rounded-xl shadow-xl shadow-blue-500/30 hover:bg-blue-700 transition-all uppercase tracking-widest active:scale-95">Tambah Varian</button>
                   </div>
@@ -312,19 +309,18 @@ export const RejectMasterData: React.FC<RejectMasterDataProps> = ({
                                <input placeholder="Unit" className="flex-1 bg-slate-50 dark:bg-slate-800 border-2 border-transparent focus:border-blue-400 rounded-xl p-3 text-sm text-center font-black uppercase outline-none shadow-inner" value={c.name} onChange={e => updateConversion(idx, 'name', e.target.value.toUpperCase())} required />
                            </div>
                            
-                           <div className="flex bg-slate-100 dark:bg-slate-800 rounded-xl p-1 gap-1">
-                               <button type="button" onClick={() => updateConversion(idx, 'operator', '*')} className={`px-4 py-2 rounded-lg text-sm font-black transition-all ${c.operator === '*' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:text-slate-600'}`} title="Perkalian">×</button>
-                               <button type="button" onClick={() => updateConversion(idx, 'operator', '/')} className={`px-4 py-2 rounded-lg text-sm font-black transition-all ${c.operator === '/' ? 'bg-orange-500 text-white shadow-lg' : 'text-slate-400 hover:text-slate-600'}`} title="Pembagian">÷</button>
+                           <div className="flex bg-slate-100 dark:bg-slate-800 rounded-xl p-3 text-lg font-black text-slate-400">
+                               ÷
                            </div>
 
                            <div className="flex-1 relative">
-                               <label className="absolute -top-6 left-0 right-0 text-[9px] text-center font-black text-blue-500 uppercase tracking-widest">RASIO ACUAN</label>
-                               <input type="number" step="any" className="w-full bg-slate-50 dark:bg-slate-800 border-2 border-transparent focus:border-blue-400 rounded-xl p-3 text-sm text-center font-black outline-none shadow-inner" value={c.inputValue} onChange={e => updateConversion(idx, 'inputValue', parseFloat(e.target.value))} required />
+                               <label className="absolute -top-6 left-0 right-0 text-[9px] text-center font-black text-blue-500 uppercase tracking-widest">RASIO PEMBAGI</label>
+                               <input type="number" step="any" className="w-full bg-slate-50 dark:bg-slate-800 border-2 border-transparent focus:border-blue-400 rounded-xl p-3 text-sm text-center font-black outline-none shadow-inner" value={c.divisor} onChange={e => updateConversion(idx, 'divisor', parseFloat(e.target.value))} required />
                            </div>
 
                            <div className="flex items-center gap-3">
                                <span className="text-slate-400 font-black text-xs uppercase tracking-tighter w-12 text-center truncate">{formData.baseUnit}</span>
-                               <button type="button" onClick={() => removeConversion(idx)} className="text-slate-200 hover:text-red-500 p-2.5 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-all" title="Hapus Konversi"><Trash2 size={22}/></button>
+                               <button type="button" onClick={() => removeConversion(idx)} className="text-slate-200 hover:text-red-500 p-2.5 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-all"><Trash2 size={22}/></button>
                            </div>
                         </div>
                       ))}
@@ -334,6 +330,9 @@ export const RejectMasterData: React.FC<RejectMasterDataProps> = ({
                             <p className="text-xs font-black uppercase tracking-[0.4em]">Belum Ada Varian Satuan</p>
                         </div>
                       )}
+                  </div>
+                  <div className="bg-blue-500/5 p-4 rounded-2xl border border-blue-500/10 text-[10px] font-medium text-blue-600 leading-relaxed">
+                      💡 Tip: Gunakan Rasio Pembagi untuk sub-unit. Misal: 1 GR ke KG, input rasio <b>1000</b>. Sistem akan menghitung (Qty Input / 1000) = Qty KG.
                   </div>
                </div>
 
