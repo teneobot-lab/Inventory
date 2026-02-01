@@ -310,6 +310,35 @@ app.delete('/api/reject/master/:id', async (req, res) => {
         sendRes(res, 200, true, "Master reject dihapus");
     } catch (err) { handleError(res, err); }
 });
+// BULK DELETE REJECT MASTER
+app.delete('/api/reject/master/bulk', async (req, res) => {
+    const { ids } = req.body;
+
+    try {
+        // --- VALIDASI RINGAN (NON-DESTRUCTIVE) ---
+        if (!Array.isArray(ids) || ids.length === 0) {
+            return sendRes(res, 400, false, "ID master reject tidak valid");
+        }
+
+        // --- EXECUTE BULK DELETE ---
+        const sql = `
+            DELETE FROM reject_master
+            WHERE id IN (?)
+        `;
+
+        const [result] = await pool.query(sql, [ids]);
+
+        sendRes(
+            res,
+            200,
+            true,
+            `${result.affectedRows} master reject berhasil dihapus`
+        );
+
+    } catch (err) {
+        handleError(res, err);
+    }
+});
 
 app.get('/api/reject/transactions', async (req, res) => {
     try {

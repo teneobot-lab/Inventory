@@ -142,6 +142,14 @@ export const api = {
     const res = await fetch(`${API_URL}/reject/master/${id}`, { method: 'DELETE' });
     await handleResponse(res);
   },
+  deleteRejectMasterBulk: async (ids: string[]) => {
+    const res = await fetch(`${API_URL}/reject/master/bulk`, { 
+        method: 'DELETE', 
+        headers, 
+        body: JSON.stringify({ ids }) 
+    });
+    return await handleResponse(res);
+  },
 
   getRejectTransactions: async (): Promise<RejectTransaction[]> => {
     const res = await fetch(`${API_URL}/reject/transactions`);

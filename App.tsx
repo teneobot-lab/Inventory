@@ -188,6 +188,15 @@ const App: React.FC = () => {
         refreshData();
       }
   };
+  const handleBulkDeleteRejectMaster = async (ids: string[]) => {
+      try {
+          await api.deleteRejectMasterBulk(ids);
+          refreshData();
+      } catch (err) {
+          console.error("Bulk delete reject failed", err);
+          alert("Gagal menghapus beberapa master reject.");
+      }
+  };
   const handleSaveRejectTransaction = async (tx: RejectTransaction) => {
       await api.addRejectTransaction(tx);
       refreshData();
@@ -588,7 +597,8 @@ const App: React.FC = () => {
                     items={rejectItems} 
                     onAddItem={handleAddRejectItem} 
                     onUpdateItem={handleUpdateRejectItem}
-                    onDeleteItem={handleDeleteRejectItem} 
+                    onDeleteItem={handleDeleteRejectItem}
+                    onBulkDelete={handleBulkDeleteRejectMaster} 
                 />
             )}
             {currentView === View.REJECT_TRANSACTION && (
