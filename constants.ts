@@ -2,36 +2,31 @@
 import { InventoryItem, Transaction, User } from './types';
 
 export const INITIAL_ITEMS: InventoryItem[] = [
-  // Fix: Added missing status property
   { 
     id: '1', name: 'Laptop Gaming X1', sku: 'ELEC-001', category: 'Electronics', 
     stock: 12, minStock: 5, unit: 'unit', conversions: [], 
-    price: 15000000, lastUpdated: '2023-10-25', status: 'active'
+    price: 15000000, lastUpdated: '2023-10-25' 
   },
-  // Fix: Added missing status property
   { 
     id: '2', name: 'Mouse Wireless Pro', sku: 'ACC-002', category: 'Accessories', 
     stock: 45, minStock: 10, unit: 'pcs', 
     conversions: [{ name: 'Box', factor: 10 }], 
-    price: 250000, lastUpdated: '2023-10-26', status: 'active'
+    price: 250000, lastUpdated: '2023-10-26' 
   },
-  // Fix: Added missing status property
   { 
     id: '3', name: 'Monitor 24 Inch', sku: 'ELEC-003', category: 'Electronics', 
     stock: 3, minStock: 8, unit: 'unit', conversions: [], 
-    price: 2100000, lastUpdated: '2023-10-20', status: 'active'
+    price: 2100000, lastUpdated: '2023-10-20' 
   },
-  // Fix: Added missing status property
   { 
     id: '4', name: 'Keyboard Mechanical', sku: 'ACC-004', category: 'Accessories', 
     stock: 20, minStock: 5, unit: 'pcs', conversions: [], 
-    price: 850000, lastUpdated: '2023-10-22', status: 'active'
+    price: 850000, lastUpdated: '2023-10-22' 
   },
-  // Fix: Added missing status property
   { 
     id: '5', name: 'USB Hub Type-C', sku: 'ACC-005', category: 'Accessories', 
     stock: 2, minStock: 15, unit: 'pcs', conversions: [], 
-    price: 150000, lastUpdated: '2023-10-15', status: 'active'
+    price: 150000, lastUpdated: '2023-10-15' 
   },
 ];
 

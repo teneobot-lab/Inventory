@@ -7,24 +7,42 @@ const headers = {
   'Content-Type': 'application/json',
 };
 
+// Helper untuk handle response error
 const handleResponse = async (res: Response) => {
   if (!res.ok) {
     const errorData = await res.json().catch(() => ({}));
-    throw new Error(errorData.message || errorData.error || `Error: ${res.status}`);
+    throw new Error(errorData.error || `Request failed with status ${res.status}`);
   }
-  const contentType = res.headers.get("content-type");
-  if (contentType && contentType.includes("application/json")) {
-    return await res.json();
+  // Untuk DELETE atau response kosong, return null/true
+  if (res.status === 204 || res.headers.get('content-length') === '0') {
+      return true;
   }
-  return true; 
+  return res.json();
 };
 
 export const api = {
   checkConnection: async (): Promise<boolean> => {
     try {
-      const res = await fetch(`${API_URL}/health`);
-      return res.ok;
-    } catch (e) { return false; }
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 4000);
+      
+      const res = await fetch(`${API_URL}/health`, { 
+        method: 'GET', 
+        signal: controller.signal,
+        cache: 'no-store'
+      });
+      
+      clearTimeout(timeoutId);
+      
+      if (res.ok) {
+        const data = await res.json();
+        return data.status === 'online';
+      }
+      return false;
+    } catch (e) {
+      console.warn("API Connection Check Failed:", e);
+      return false;
+    }
   },
 
   login: async (username: string, password: string): Promise<User | null> => {
@@ -33,132 +51,143 @@ export const api = {
       headers,
       body: JSON.stringify({ username, password }),
     });
-    const data = await handleResponse(res);
-    return data.success ? data.data : null;
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.success ? data.user : null;
   },
 
-  // Inventory Master
   getInventory: async (): Promise<InventoryItem[]> => {
-    const res = await fetch(`${API_URL}/inventory`);
-    return await handleResponse(res);
+    try {
+        const res = await fetch(`${API_URL}/inventory`);
+        return await handleResponse(res);
+    } catch (e) { return []; }
   },
+  
   addInventory: async (item: InventoryItem) => {
     const res = await fetch(`${API_URL}/inventory`, { method: 'POST', headers, body: JSON.stringify(item) });
-    return await handleResponse(res);
+    await handleResponse(res);
+  },
+  updateInventory: async (item: InventoryItem) => {
+    const res = await fetch(`${API_URL}/inventory/${item.id}`, { method: 'PUT', headers, body: JSON.stringify(item) });
+    await handleResponse(res);
   },
   deleteInventory: async (id: string) => {
     const res = await fetch(`${API_URL}/inventory/${id}`, { method: 'DELETE' });
-    return await handleResponse(res);
+    await handleResponse(res);
   },
-  // Fix: Added missing deleteInventoryBulk method
   deleteInventoryBulk: async (ids: string[]) => {
-    const res = await fetch(`${API_URL}/inventory/delete-bulk`, { 
-      method: 'POST', 
-      headers, 
-      body: JSON.stringify({ ids }) 
+    const res = await fetch(`${API_URL}/inventory/bulk-delete`, { 
+        method: 'POST', 
+        headers, 
+        body: JSON.stringify({ ids }) 
     });
     return await handleResponse(res);
   },
 
   // Transactions
   getTransactions: async (): Promise<Transaction[]> => {
-    const res = await fetch(`${API_URL}/transactions`);
-    return await handleResponse(res);
+    try {
+        const res = await fetch(`${API_URL}/transactions`);
+        if(!res.ok) {
+            console.error("Server returned error fetching transactions");
+            return [];
+        }
+        return await res.json();
+    } catch (e) { 
+        console.error("Network error fetching transactions:", e); 
+        return []; 
+    }
   },
   addTransaction: async (tx: Transaction) => {
     const res = await fetch(`${API_URL}/transactions`, { method: 'POST', headers, body: JSON.stringify(tx) });
-    return await handleResponse(res);
+    await handleResponse(res);
   },
-  // Fix: Added missing updateTransaction method
   updateTransaction: async (tx: Transaction) => {
-    const res = await fetch(`${API_URL}/transactions/${tx.id}`, { 
-      method: 'PUT', 
-      headers, 
-      body: JSON.stringify(tx) 
-    });
-    return await handleResponse(res);
+    // CRITICAL FIX: Handle Response ensures we catch 404/500 errors
+    const res = await fetch(`${API_URL}/transactions/${tx.id}`, { method: 'PUT', headers, body: JSON.stringify(tx) });
+    await handleResponse(res);
   },
   deleteTransaction: async (id: string) => {
     const res = await fetch(`${API_URL}/transactions/${id}`, { method: 'DELETE' });
-    return await handleResponse(res);
+    await handleResponse(res);
   },
 
-  // Reject Master (Standalone)
+  // Users
+  getUsers: async (): Promise<User[]> => {
+    const res = await fetch(`${API_URL}/users`);
+    return res.ok ? await res.json() : [];
+  },
+  addUser: async (user: User) => {
+    const res = await fetch(`${API_URL}/users`, { method: 'POST', headers, body: JSON.stringify(user) });
+    await handleResponse(res);
+  },
+  updateUser: async (user: User) => {
+    const res = await fetch(`${API_URL}/users/${user.id}`, { method: 'PUT', headers, body: JSON.stringify(user) });
+    await handleResponse(res);
+  },
+  deleteUser: async (id: string) => {
+    const res = await fetch(`${API_URL}/users/${id}`, { method: 'DELETE' });
+    await handleResponse(res);
+  },
+
+  // Reject Master Data
   getRejectMaster: async (): Promise<RejectItem[]> => {
     const res = await fetch(`${API_URL}/reject/master`);
-    return await handleResponse(res);
+    return res.ok ? await res.json() : [];
   },
   addRejectMaster: async (item: RejectItem) => {
     const res = await fetch(`${API_URL}/reject/master`, { method: 'POST', headers, body: JSON.stringify(item) });
-    return await handleResponse(res);
+    await handleResponse(res);
+  },
+  updateRejectMaster: async (item: RejectItem) => {
+    const res = await fetch(`${API_URL}/reject/master/${item.id}`, { method: 'PUT', headers, body: JSON.stringify(item) });
+    await handleResponse(res);
   },
   deleteRejectMaster: async (id: string) => {
     const res = await fetch(`${API_URL}/reject/master/${id}`, { method: 'DELETE' });
-    return await handleResponse(res);
+    await handleResponse(res);
   },
 
   // Reject Transactions
   getRejectTransactions: async (): Promise<RejectTransaction[]> => {
     const res = await fetch(`${API_URL}/reject/transactions`);
-    return await handleResponse(res);
+    return res.ok ? await res.json() : [];
   },
   addRejectTransaction: async (tx: RejectTransaction) => {
     const res = await fetch(`${API_URL}/reject/transactions`, { method: 'POST', headers, body: JSON.stringify(tx) });
-    return await handleResponse(res);
-  },
-  deleteRejectTransaction: async (id: string) => {
-    const res = await fetch(`${API_URL}/reject/transactions/${id}`, { method: 'DELETE' });
-    return await handleResponse(res);
+    await handleResponse(res);
   },
 
-  // User Management
-  getUsers: async (): Promise<User[]> => {
-    const res = await fetch(`${API_URL}/users`);
-    return await handleResponse(res);
-  },
-  addUser: async (user: User) => {
-    const res = await fetch(`${API_URL}/users`, { method: 'POST', headers, body: JSON.stringify(user) });
-    return await handleResponse(res);
-  },
-  updateUser: async (user: User) => {
-    const res = await fetch(`${API_URL}/users`, { method: 'POST', headers, body: JSON.stringify(user) });
-    return await handleResponse(res);
-  },
-  deleteUser: async (id: string) => {
-    const res = await fetch(`${API_URL}/users/${id}`, { method: 'DELETE' });
-    return await handleResponse(res);
-  },
-
-  // Media Player
+  // Playlists
   getPlaylists: async (): Promise<Playlist[]> => {
     const res = await fetch(`${API_URL}/playlists`);
-    return await handleResponse(res);
+    return res.ok ? await res.json() : [];
   },
   createPlaylist: async (name: string) => {
-    const res = await fetch(`${API_URL}/playlists`, { method: 'POST', headers, body: JSON.stringify({ id: `PL-${Date.now()}`, name }) });
-    return await handleResponse(res);
+    const id = `PL-${Date.now()}`;
+    const res = await fetch(`${API_URL}/playlists`, { method: 'POST', headers, body: JSON.stringify({ id, name }) });
+    await handleResponse(res);
   },
   deletePlaylist: async (id: string) => {
     const res = await fetch(`${API_URL}/playlists/${id}`, { method: 'DELETE' });
-    return await handleResponse(res);
+    await handleResponse(res);
   },
-  getPlaylistItems: async (pid: string): Promise<PlaylistItem[]> => {
-    const res = await fetch(`${API_URL}/playlists/${pid}/items`);
-    return await handleResponse(res);
+  getPlaylistItems: async (playlistId: string): Promise<PlaylistItem[]> => {
+    const res = await fetch(`${API_URL}/playlists/${playlistId}/items`);
+    return res.ok ? await res.json() : [];
   },
-  addPlaylistItem: async (pid: string, item: Partial<PlaylistItem>) => {
-    const res = await fetch(`${API_URL}/playlists/${pid}/items`, { method: 'POST', headers, body: JSON.stringify(item) });
-    return await handleResponse(res);
+  addPlaylistItem: async (playlistId: string, item: Partial<PlaylistItem>) => {
+    const res = await fetch(`${API_URL}/playlists/${playlistId}/items`, { method: 'POST', headers, body: JSON.stringify(item) });
+    await handleResponse(res);
   },
-  deletePlaylistItem: async (id: string) => {
-    const res = await fetch(`${API_URL}/playlists/items/${id}`, { method: 'DELETE' });
-    return await handleResponse(res);
+  deletePlaylistItem: async (itemId: string) => {
+    const res = await fetch(`${API_URL}/playlists/items/${itemId}`, { method: 'DELETE' });
+    await handleResponse(res);
   },
 
-  // System Maintenance
-  // Fix: Added missing resetDatabase method
-  resetDatabase: async () => {
-    const res = await fetch(`${API_URL}/reset`, { method: 'POST' });
-    return await handleResponse(res);
+  // System
+  resetDatabase: async (): Promise<{ success: boolean; message?: string; error?: string }> => {
+    const res = await fetch(`${API_URL}/system/reset`, { method: 'POST', headers });
+    return res.json();
   }
 };
