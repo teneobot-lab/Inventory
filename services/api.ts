@@ -15,7 +15,7 @@ const handleResponse = async (res: Response) => {
   
   if (!contentType || !contentType.includes('application/json')) {
     if (res.status === 502) {
-      throw new Error(`Server Error (502 Bad Gateway): VPS Backend (89.21.85.28:3010) tidak merespons. Periksa Firewall VPS.`);
+      throw new Error(`Server Error (502 Bad Gateway): VPS Backend tidak merespons. Pastikan Port 3010 di Firewall VPS sudah OPEN.`);
     }
     throw new Error(`Server Error (${res.status}): Respons bukan JSON.`);
   }
@@ -28,11 +28,30 @@ const handleResponse = async (res: Response) => {
 };
 
 export const api = {
-  checkConnection: async () => {
+  /**
+   * Pengecekan status server yang disinkronkan dengan server/index.js
+   */
+  checkConnection: async (): Promise<{ online: boolean; db: boolean }> => {
     try {
-      const res = await fetch(`${API_URL}/health`, { cache: 'no-store' });
-      return res.ok ? await res.json() : { online: false, db: false };
-    } catch { return { online: false, db: false }; }
+      const res = await fetch(`${API_URL}/health`, { 
+        method: 'GET',
+        cache: 'no-store',
+        headers: { 'Accept': 'application/json' }
+      });
+      
+      if (res.ok) {
+        const json = await res.json();
+        // Mapping: server mengembalikan { success: true, data: { database: true } }
+        return { 
+          online: json.success === true, 
+          db: json.data?.database === true 
+        };
+      }
+      return { online: false, db: false };
+    } catch (e) {
+      console.error("Connection check failed:", e);
+      return { online: false, db: false };
+    }
   },
 
   login: async (username: string, password: string) => {
@@ -102,7 +121,7 @@ export const api = {
     return await handleResponse(res);
   },
 
-  // --- REJECT MODULE (REBUILT) ---
+  // --- REJECT MODULE ---
   getRejectMaster: async () => {
     const res = await fetch(`${API_URL}/reject/master`);
     const data = await handleResponse(res);

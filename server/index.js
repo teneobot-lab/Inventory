@@ -50,10 +50,12 @@ const handleError = (res, err, customMsg = "Internal Server Error") => {
 
 // --- 1. SYSTEM & HEALTH ---
 app.get('/api/health', async (req, res) => {
+    console.log(`[${new Date().toISOString()}] Health check requested from ${req.ip}`);
     try {
         const [rows] = await pool.query('SELECT 1 as ok');
         sendRes(res, 200, true, "SmartInventory API Online", { database: rows[0].ok === 1 });
     } catch (e) {
+        console.error("Health check DB Error:", e.message);
         sendRes(res, 500, false, "Database Connection Failed", { database: false, error: e.message });
     }
 });
@@ -341,5 +343,6 @@ app.post('/api/system/reset', async (req, res) => {
 
 // --- START SERVER ---
 app.listen(PORT, '0.0.0.0', () => {
-    console.log(`SmartInventory All-in-One Backend v1.2.0 is running on PORT ${PORT}`);
+    console.log(`SmartInventory All-in-One Backend v1.2.1 is running on PORT ${PORT}`);
+    console.log(`Bind address: 0.0.0.0 (Global Access)`);
 });
