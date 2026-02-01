@@ -66,7 +66,6 @@ const handleError = (res, err, customMsg = "Internal Server Error") => {
 app.get('/api/health', async (req, res) => {
     let dbStatus = false;
     try {
-        // Pengecekan koneksi database yang sangat cepat (timeout di level query)
         const [rows] = await pool.query('SELECT 1 as ok');
         if (rows && rows[0].ok === 1) dbStatus = true;
     } catch (err) {
@@ -171,7 +170,7 @@ app.post('/api/inventory/bulk-delete', async (req, res) => {
     } catch (err) { handleError(res, err); }
 });
 
-// --- TRANSACTION MODULE ---
+// --- TRANSACTION MODULE (ACID) ---
 
 app.get('/api/transactions', async (req, res) => {
     try {
@@ -186,6 +185,7 @@ app.post('/api/transactions', async (req, res) => {
     try {
         await conn.beginTransaction();
 
+        // Validasi stok untuk OUT
         if (tx.type === 'OUT') {
             for (const item of tx.items) {
                 const [inv] = await conn.query('SELECT stock, name FROM inventory WHERE id = ? FOR UPDATE', [item.itemId]);
@@ -195,9 +195,21 @@ app.post('/api/transactions', async (req, res) => {
             }
         }
 
+        // PERBAIKAN: Placeholder berjumlah 9, Parameter sekarang juga berjumlah 9
         const sqlTx = `INSERT INTO transactions (id, type, date, reference_number, supplier, notes, photos, items, performer) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`;
-        await conn.query(sqlTx, [tx.id, tx.type, new Date(tx.date), tx.referenceNumber || null, tx.supplier || null, tx.notes || '', JSON.stringify(tx.photos || []), JSON.stringify(tx.items || []), JSON.stringify(tx.items || []), tx.performer || 'Admin']);
+        await conn.query(sqlTx, [
+            tx.id, 
+            tx.type, 
+            new Date(tx.date), 
+            tx.referenceNumber || null, 
+            tx.supplier || null, 
+            tx.notes || '', 
+            JSON.stringify(tx.photos || []), 
+            JSON.stringify(tx.items || []), 
+            tx.performer || 'Admin'
+        ]);
 
+        // Update stok
         for (const item of tx.items) {
             let updateSql = tx.type === 'IN' ? 'UPDATE inventory SET stock = stock + ? WHERE id = ?' : 'UPDATE inventory SET stock = stock - ? WHERE id = ?';
             await conn.query(updateSql, [item.quantity, item.itemId]);
@@ -207,6 +219,7 @@ app.post('/api/transactions', async (req, res) => {
         sendRes(res, 201, true, "Transaksi berhasil");
     } catch (err) {
         if (conn) await conn.rollback();
+        // Mengembalikan pesan error asli agar FE bisa menampilkan detail (misal: "Stok tidak cukup")
         sendRes(res, 400, false, err.message);
     } finally { if (conn) conn.release(); }
 });
@@ -417,5 +430,5 @@ app.post('/api/system/reset', async (req, res) => {
 
 // --- START SERVER ---
 app.listen(PORT, '0.0.0.0', () => {
-    console.log(`SmartInventory Pro API v1.0.1 - PORT ${PORT}`);
+    console.log(`SmartInventory Pro API Fixed v1.0.2 - PORT ${PORT}`);
 });
