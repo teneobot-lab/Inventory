@@ -3,6 +3,7 @@ import React, { useState, useRef } from 'react';
 import { InventoryItem, InventoryUnitConversion } from '../types';
 import { Plus, Search, Edit2, Trash2, AlertCircle, Upload, Download, CheckSquare, X, PlusCircle, Trash, FileSpreadsheet, Loader2 } from 'lucide-react';
 import * as XLSX from 'xlsx';
+import { Toast } from './Toast';
 
 interface InventoryModuleProps {
   items: InventoryItem[];
@@ -21,7 +22,9 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ items, onAddIt
   
   // UI Loading States
   const [isSubmitting, setIsSubmitting] = useState(false);
-  
+  const [showToast, setShowToast] = useState(false);
+  const [toastMsg, setToastMsg] = useState('');
+
   // Selection State for Bulk Actions
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   
@@ -76,6 +79,8 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ items, onAddIt
                 await onDeleteItem(id);
             }
         }
+        setToastMsg(`${selectedIds.size} item berhasil dihapus secara massal.`);
+        setShowToast(true);
         setSelectedIds(new Set());
       } catch (error: any) {
         alert(`Gagal hapus massal: ${error.message}`);
@@ -146,10 +151,13 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ items, onAddIt
     try {
       if (editingItem) {
         await onUpdateItem(payload);
+        setToastMsg("Data barang berhasil diperbarui.");
       } else {
         await onAddItem(payload);
+        setToastMsg("Barang baru berhasil ditambahkan.");
       }
-      setIsModalOpen(false); // Hanya tutup modal jika API sukses
+      setShowToast(true);
+      setIsModalOpen(false); 
     } catch (error: any) {
       alert(`Gagal menyimpan: ${error.message}`);
     } finally {
@@ -267,6 +275,8 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ items, onAddIt
 
   return (
     <div className="space-y-6">
+      <Toast isVisible={showToast} message={toastMsg} onClose={() => setShowToast(false)} />
+
       <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
         <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Inventory Management</h2>
         <div className="flex gap-2">
@@ -390,7 +400,11 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ items, onAddIt
                         onClick={async () => {
                            if(confirm('Apakah Anda yakin ingin menghapus item ini?')) {
                              setIsSubmitting(true);
-                             try { await onDeleteItem(item.id); } 
+                             try { 
+                                await onDeleteItem(item.id); 
+                                setToastMsg("Item berhasil dihapus.");
+                                setShowToast(true);
+                             } 
                              catch(e:any) { alert(`Gagal hapus: ${e.message}`); }
                              finally { setIsSubmitting(false); }
                            }

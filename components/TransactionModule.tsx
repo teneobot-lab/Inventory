@@ -59,6 +59,39 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const bulkFileRef = useRef<HTMLInputElement>(null);
 
+  // --- Senior Fix: Image Compression to prevent 502/413 errors ---
+  const compressImage = (base64Str: string): Promise<string> => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.src = base64Str;
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const MAX_WIDTH = 800; // Optimal for reports
+        const MAX_HEIGHT = 800;
+        let width = img.width;
+        let height = img.height;
+
+        if (width > height) {
+          if (width > MAX_WIDTH) {
+            height *= MAX_WIDTH / width;
+            width = MAX_WIDTH;
+          }
+        } else {
+          if (height > MAX_HEIGHT) {
+            width *= MAX_HEIGHT / height;
+            height = MAX_HEIGHT;
+          }
+        }
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx?.drawImage(img, 0, 0, width, height);
+        // Compress to 70% quality
+        resolve(canvas.toDataURL('image/jpeg', 0.7));
+      };
+    });
+  };
+
   const handleDownloadTemplate = () => {
     const headers = [["SKU", "Nama Barang", "Qty", "Satuan"]];
     const sampleData = [["ELEC-001", "Laptop Gaming", "5", "unit"]];
@@ -81,7 +114,7 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
     );
   }).slice(0, 8);
 
-  // Populate form when initialData changes (Edit Mode triggered from History)
+  // Populate form when initialData changes
   useEffect(() => {
     if (initialData) {
       setIsEditing(true);
@@ -91,7 +124,6 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
       setSupplier(initialData.supplier || '');
       setNotes(initialData.notes);
       setPhotos(initialData.photos || []);
-      // Deep copy to prevent reference issues
       setCart(initialData.items.map(i => ({...i})));
     } else {
       resetForm();
@@ -271,9 +303,11 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
     if (!files) return;
     Array.from(files).forEach((file: File) => {
       const reader = new FileReader();
-      reader.onload = (evt) => {
-        const base64 = evt.target?.result as string;
-        setPhotos(prev => [...prev, base64]);
+      reader.onload = async (evt) => {
+        const rawBase64 = evt.target?.result as string;
+        // Compress photo before adding to state
+        const compressed = await compressImage(rawBase64);
+        setPhotos(prev => [...prev, compressed]);
       };
       reader.readAsDataURL(file);
     });
@@ -293,7 +327,6 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
     if (!isIncoming) {
       const hasNegativeStock = cart.some(ci => {
         const originalItem = items.find(i => i.id === ci.itemId);
-        // Only warn for negative stock if not editing (or if logic requires deep check)
         return originalItem && (originalItem.stock - ci.quantity < 0);
       });
 
@@ -328,7 +361,6 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
       } else {
         await onSaveTransaction(transactionData);
       }
-      // ONLY show success if no error was thrown above
       setShowSuccessToast(true);
       resetForm();
     } catch (error: any) {
@@ -439,6 +471,7 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
                       </button>
                    </div>
                    <input ref={fileInputRef} type="file" multiple accept="image/*" onChange={handlePhotoUpload} className="hidden" />
+                   <p className="text-[10px] text-slate-400 italic">Foto dikompres otomatis agar hemat kuota.</p>
                 </div>
               </div>
            </div>
@@ -497,11 +530,6 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
                                 </div>
                               </div>
                             ))}
-                         </div>
-                       )}
-                       {selectedItem && (
-                         <div className="absolute top-1/2 -translate-y-1/2 right-3 text-green-500 flex items-center gap-1 animate-scale-in">
-                            <CheckCircle2 size={16} />
                          </div>
                        )}
                     </div>
