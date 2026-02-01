@@ -10,17 +10,12 @@ const app = express();
 const PORT = process.env.PORT || 3010;
 
 // --- MIDDLEWARE ---
-app.use(cors({
-    origin: '*',
-    methods: ['GET', 'POST', 'PUT', 'DELETE'],
-    allowedHeaders: ['Content-Type', 'Authorization']
-}));
-
+app.use(cors({ origin: '*', methods: ['GET', 'POST', 'PUT', 'DELETE'], allowedHeaders: ['Content-Type', 'Authorization'] }));
 app.use(bodyParser.json({ limit: '100mb' }));
 app.use(bodyParser.urlencoded({ limit: '100mb', extended: true }));
 
 // --- DATABASE CONNECTION ---
-const dbConfig = {
+const pool = mysql.createPool({
     host: process.env.DB_HOST || 'localhost',
     user: process.env.DB_USER,
     password: process.env.DB_PASSWORD,
@@ -29,158 +24,129 @@ const dbConfig = {
     connectionLimit: 15,
     queueLimit: 0,
     charset: 'utf8mb4'
-};
+});
 
-const pool = mysql.createPool(dbConfig);
-
-// --- UTILITIES & HELPERS ---
-
+// --- UTILITIES ---
 const toCamel = (o) => {
     if (!o || typeof o !== 'object') return o;
     const newO = {};
     Object.keys(o).forEach(key => {
         const newKey = key.replace(/_([a-z])/g, (g) => g[1].toUpperCase());
         let value = o[key];
-        const jsonFields = ['conversions', 'items', 'photos'];
-        if (jsonFields.includes(newKey) || jsonFields.includes(key)) {
-            if (typeof value === 'string' && value.trim() !== '') {
-                try { value = JSON.parse(value); } catch (e) { value = []; }
-            } else if (value === null) { value = []; }
+        if (['conversions', 'items', 'photos'].includes(newKey) || ['conversions', 'items', 'photos'].includes(key)) {
+            try { value = typeof value === 'string' ? JSON.parse(value) : value; } catch (e) { value = []; }
         }
         newO[newKey] = value;
     });
     return newO;
 };
 
-const sendRes = (res, code, success, message, data = null) => {
-    res.status(code).json({ success, message, data });
-};
+const sendRes = (res, code, success, message, data = null) => res.status(code).json({ success, message, data });
 
 const handleError = (res, err, customMsg = "Internal Server Error") => {
-    console.error("CRITICAL_SERVER_ERROR:", {
-        message: err.message,
-        stack: err.stack,
-        custom: customMsg
-    });
+    console.error("CRITICAL_API_ERROR:", err);
     sendRes(res, 500, false, customMsg, err.message);
 };
 
-// --- SYSTEM & HEALTH ROUTES ---
-
+// --- 1. SYSTEM & HEALTH ---
 app.get('/api/health', async (req, res) => {
-    let dbStatus = false;
     try {
         const [rows] = await pool.query('SELECT 1 as ok');
-        if (rows && rows[0].ok === 1) dbStatus = true;
-    } catch (err) {
-        console.error("Health DB Error:", err.message);
-        dbStatus = false;
+        sendRes(res, 200, true, "SmartInventory API Online", { database: rows[0].ok === 1 });
+    } catch (e) {
+        sendRes(res, 500, false, "Database Connection Failed", { database: false, error: e.message });
     }
-    
-    sendRes(res, 200, true, "SmartInventory API Status", { 
-        api: "online", 
-        database: dbStatus,
-        uptime: Math.round(process.uptime()),
-        timestamp: new Date().toISOString()
-    });
 });
 
-// --- AUTH & USER MANAGEMENT ---
-
+// --- 2. AUTH & USERS ---
 app.post('/api/login', async (req, res) => {
     const { username, password } = req.body;
     try {
         const [rows] = await pool.query('SELECT id, name, username, role, email FROM users WHERE username = ? AND password = ?', [username, password]);
-        if (rows.length > 0) {
+        if (rows.length) {
             sendRes(res, 200, true, "Login sukses", toCamel(rows[0]));
         } else {
-            sendRes(res, 401, false, "Kredensial tidak valid");
+            sendRes(res, 401, false, "Username atau password salah");
         }
-    } catch (err) { handleError(res, err); }
+    } catch (e) { handleError(res, e); }
 });
 
 app.get('/api/users', async (req, res) => {
     try {
         const [rows] = await pool.query('SELECT id, name, username, role, email FROM users ORDER BY name ASC');
         res.json(rows.map(toCamel));
-    } catch (err) { handleError(res, err); }
+    } catch (e) { handleError(res, e); }
 });
 
 app.post('/api/users', async (req, res) => {
     const u = req.body;
     try {
-        await pool.query('INSERT INTO users (id, name, username, password, role, email) VALUES (?, ?, ?, ?, ?, ?)', 
-            [u.id, u.name, u.username, u.password, u.role, u.email]);
-        sendRes(res, 201, true, "User berhasil ditambahkan");
-    } catch (err) { handleError(res, err); }
+        await pool.query('INSERT INTO users (id, name, username, password, role, email) VALUES (?,?,?,?,?,?)', [u.id, u.name, u.username, u.password, u.role, u.email]);
+        sendRes(res, 201, true, "User berhasil dibuat");
+    } catch (e) { handleError(res, e); }
 });
 
 app.put('/api/users/:id', async (req, res) => {
     const u = req.body;
     try {
-        await pool.query('UPDATE users SET name=?, username=?, password=?, role=?, email=? WHERE id=?', 
-            [u.name, u.username, u.password, u.role, u.email, req.params.id]);
-        sendRes(res, 200, true, "User berhasil diperbarui");
-    } catch (err) { handleError(res, err); }
+        await pool.query('UPDATE users SET name=?, username=?, password=?, role=?, email=? WHERE id=?', [u.name, u.username, u.password, u.role, u.email, req.params.id]);
+        sendRes(res, 200, true, "User diperbarui");
+    } catch (e) { handleError(res, e); }
 });
 
 app.delete('/api/users/:id', async (req, res) => {
     try {
-        await pool.query('DELETE FROM users WHERE id = ?', [req.params.id]);
+        await pool.query('DELETE FROM users WHERE id=?', [req.params.id]);
         sendRes(res, 200, true, "User dihapus");
-    } catch (err) { handleError(res, err); }
+    } catch (e) { handleError(res, e); }
 });
 
-// --- INVENTORY MODULE ---
-
+// --- 3. INVENTORY MODULE ---
 app.get('/api/inventory', async (req, res) => {
     try {
         const [rows] = await pool.query('SELECT * FROM inventory ORDER BY name ASC');
         res.json(rows.map(toCamel));
-    } catch (err) { handleError(res, err); }
+    } catch (e) { handleError(res, e); }
 });
 
 app.post('/api/inventory', async (req, res) => {
-    const item = req.body;
+    const i = req.body;
     try {
-        const sql = `INSERT INTO inventory (id, name, sku, category, stock, min_stock, unit, conversions, price, last_updated) 
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) 
-                     ON DUPLICATE KEY UPDATE name=VALUES(name), sku=VALUES(sku), category=VALUES(category), stock=VALUES(stock), min_stock=VALUES(min_stock), unit=VALUES(unit), conversions=VALUES(conversions), price=VALUES(price), last_updated=VALUES(last_updated)`;
-        await pool.query(sql, [item.id, item.name, item.sku, item.category, item.stock, item.minStock, item.unit, JSON.stringify(item.conversions || []), item.price, new Date()]);
-        sendRes(res, 201, true, "Barang berhasil disimpan");
-    } catch (err) { handleError(res, err); }
+        await pool.query('INSERT INTO inventory (id, name, sku, category, stock, min_stock, unit, conversions, price, last_updated) VALUES (?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE name=VALUES(name), stock=VALUES(stock), price=VALUES(price)', 
+            [i.id, i.name, i.sku, i.category, i.stock, i.minStock, i.unit, JSON.stringify(i.conversions || []), i.price, new Date()]);
+        sendRes(res, 201, true, "Barang disimpan");
+    } catch (e) { handleError(res, e); }
 });
 
 app.put('/api/inventory/:id', async (req, res) => {
-    const item = req.body;
+    const i = req.body;
     try {
-        const sql = `UPDATE inventory SET name=?, sku=?, category=?, stock=?, min_stock=?, unit=?, conversions=?, price=?, last_updated=? WHERE id=?`;
-        await pool.query(sql, [item.name, item.sku, item.category, item.stock, item.minStock, item.unit, JSON.stringify(item.conversions || []), item.price, new Date(), req.params.id]);
+        await pool.query('UPDATE inventory SET name=?, sku=?, category=?, stock=?, min_stock=?, unit=?, conversions=?, price=?, last_updated=? WHERE id=?', 
+            [i.name, i.sku, i.category, i.stock, i.minStock, i.unit, JSON.stringify(i.conversions || []), i.price, new Date(), req.params.id]);
         sendRes(res, 200, true, "Barang diperbarui");
-    } catch (err) { handleError(res, err); }
+    } catch (e) { handleError(res, e); }
 });
 
 app.delete('/api/inventory/:id', async (req, res) => {
     try {
-        await pool.query('DELETE FROM inventory WHERE id = ?', [req.params.id]);
+        await pool.query('DELETE FROM inventory WHERE id=?', [req.params.id]);
         sendRes(res, 200, true, "Barang dihapus");
-    } catch (err) { handleError(res, err); }
+    } catch (e) { handleError(res, e); }
 });
 
 app.post('/api/inventory/bulk-delete', async (req, res) => {
     try {
         await pool.query('DELETE FROM inventory WHERE id IN (?)', [req.body.ids]);
-        sendRes(res, 200, true, "Beberapa barang berhasil dihapus");
-    } catch (err) { handleError(res, err); }
+        sendRes(res, 200, true, "Bulk delete berhasil");
+    } catch (e) { handleError(res, e); }
 });
 
-// --- TRANSACTION MODULE (ACID) ---
-
+// --- 4. TRANSACTIONS MODULE (WITH STOCK SYNC) ---
 app.get('/api/transactions', async (req, res) => {
     try {
-        const [rows] = await pool.query('SELECT * FROM transactions ORDER BY date DESC, id DESC');
+        const [rows] = await pool.query('SELECT * FROM transactions ORDER BY date DESC');
         res.json(rows.map(toCamel));
-    } catch (err) { handleError(res, err); }
+    } catch (e) { handleError(res, e); }
 });
 
 app.post('/api/transactions', async (req, res) => {
@@ -188,280 +154,172 @@ app.post('/api/transactions', async (req, res) => {
     const conn = await pool.getConnection();
     try {
         await conn.beginTransaction();
+        await conn.query('INSERT INTO transactions (id, type, date, reference_number, supplier, notes, photos, items, performer) VALUES (?,?,?,?,?,?,?,?,?)',
+            [tx.id, tx.type, new Date(tx.date), tx.referenceNumber, tx.supplier, tx.notes, JSON.stringify(tx.photos || []), JSON.stringify(tx.items || []), tx.performer]);
 
-        // Validasi stok untuk OUT
-        if (tx.type === 'OUT') {
-            for (const item of tx.items) {
-                const [inv] = await conn.query('SELECT stock, name FROM inventory WHERE id = ? FOR UPDATE', [item.itemId]);
-                if (inv.length > 0 && inv[0].stock < item.quantity) {
-                    throw new Error(`Stok tidak cukup untuk: ${inv[0].name}`);
-                }
-            }
-        }
-
-        const sqlTx = `INSERT INTO transactions (id, type, date, reference_number, supplier, notes, photos, items, performer) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`;
-        await conn.query(sqlTx, [
-            tx.id, 
-            tx.type, 
-            new Date(tx.date), 
-            tx.referenceNumber || null, 
-            tx.supplier || null, 
-            tx.notes || '', 
-            JSON.stringify(tx.photos || []), 
-            JSON.stringify(tx.items || []), 
-            tx.performer || 'Admin'
-        ]);
-
-        // Update stok
         for (const item of tx.items) {
-            let updateSql = tx.type === 'IN' ? 'UPDATE inventory SET stock = stock + ? WHERE id = ?' : 'UPDATE inventory SET stock = stock - ? WHERE id = ?';
-            await conn.query(updateSql, [item.quantity, item.itemId]);
+            const sql = tx.type === 'IN' ? 'UPDATE inventory SET stock = stock + ? WHERE id = ?' : 'UPDATE inventory SET stock = stock - ? WHERE id = ?';
+            await conn.query(sql, [item.quantity, item.itemId]);
         }
-
         await conn.commit();
-        sendRes(res, 201, true, "Transaksi berhasil");
-    } catch (err) {
-        if (conn) await conn.rollback();
-        sendRes(res, 400, false, err.message);
-    } finally { if (conn) conn.release(); }
-});
-
-app.put('/api/transactions/:id', async (req, res) => {
-    const txId = req.params.id;
-    const newTx = req.body;
-    const conn = await pool.getConnection();
-    try {
-        await conn.beginTransaction();
-        const [oldRows] = await conn.query('SELECT * FROM transactions WHERE id = ? FOR UPDATE', [txId]);
-        if (oldRows.length === 0) throw new Error("Transaksi tidak ditemukan");
-        const oldTx = toCamel(oldRows[0]);
-
-        for (const item of oldTx.items) {
-            let revertSql = oldTx.type === 'IN' ? 'UPDATE inventory SET stock = stock - ? WHERE id = ?' : 'UPDATE inventory SET stock = stock + ? WHERE id = ?';
-            await conn.query(revertSql, [item.quantity, item.itemId]);
-        }
-
-        const sqlUpdate = `UPDATE transactions SET date=?, reference_number=?, supplier=?, notes=?, photos=?, items=?, performer=? WHERE id=?`;
-        await conn.query(sqlUpdate, [new Date(newTx.date), newTx.referenceNumber || null, newTx.supplier || null, newTx.notes || '', JSON.stringify(newTx.photos || []), JSON.stringify(newTx.items || []), newTx.performer || 'Admin', txId]);
-
-        for (const item of newTx.items) {
-            let applySql = newTx.type === 'IN' ? 'UPDATE inventory SET stock = stock + ? WHERE id = ?' : 'UPDATE inventory SET stock = stock - ? WHERE id = ?';
-            await conn.query(applySql, [item.quantity, item.itemId]);
-        }
-
-        await conn.commit();
-        sendRes(res, 200, true, "Transaksi diperbarui");
-    } catch (err) {
-        if (conn) await conn.rollback();
-        sendRes(res, 400, false, err.message);
-    } finally { if (conn) conn.release(); }
+        sendRes(res, 201, true, "Transaksi dicatat");
+    } catch (e) {
+        await conn.rollback();
+        handleError(res, e, "Gagal simpan transaksi & update stok");
+    } finally { conn.release(); }
 });
 
 app.delete('/api/transactions/:id', async (req, res) => {
     const conn = await pool.getConnection();
     try {
         await conn.beginTransaction();
-        const [rows] = await conn.query('SELECT * FROM transactions WHERE id = ? FOR UPDATE', [req.params.id]);
-        if (rows.length === 0) throw new Error("Transaksi tidak ditemukan");
-        const tx = toCamel(rows[0]);
-
-        for (const item of tx.items) {
-            let revertSql = tx.type === 'IN' ? 'UPDATE inventory SET stock = stock - ? WHERE id = ?' : 'UPDATE inventory SET stock = stock + ? WHERE id = ?';
-            await conn.query(revertSql, [item.quantity, item.itemId]);
+        const [rows] = await conn.query('SELECT * FROM transactions WHERE id=?', [req.params.id]);
+        if (rows.length) {
+            const tx = toCamel(rows[0]);
+            for (const item of tx.items) {
+                const sql = tx.type === 'IN' ? 'UPDATE inventory SET stock = stock - ? WHERE id = ?' : 'UPDATE inventory SET stock = stock + ? WHERE id = ?';
+                await conn.query(sql, [item.quantity, item.itemId]);
+            }
         }
-
-        await conn.query('DELETE FROM transactions WHERE id = ?', [req.params.id]);
+        await conn.query('DELETE FROM transactions WHERE id=?', [req.params.id]);
         await conn.commit();
-        sendRes(res, 200, true, "Transaksi dihapus dan stok dikembalikan");
-    } catch (err) {
-        if (conn) await conn.rollback();
-        sendRes(res, 400, false, err.message);
-    } finally { if (conn) conn.release(); }
+        sendRes(res, 200, true, "Transaksi dihapus & stok dikembalikan");
+    } catch (e) { await conn.rollback(); handleError(res, e); }
+    finally { conn.release(); }
 });
 
-// --- REJECT MODULE ---
-
+// --- 5. REJECT MODULE (REBUILT) ---
 app.get('/api/reject/master', async (req, res) => {
     try {
         const [rows] = await pool.query('SELECT * FROM reject_master ORDER BY name ASC');
         res.json(rows.map(toCamel));
-    } catch (err) { handleError(res, err); }
+    } catch (e) { handleError(res, e); }
 });
 
 app.post('/api/reject/master', async (req, res) => {
-    const item = req.body;
+    const i = req.body;
     try {
-        // Alphanumeric only ID generation
-        const finalId = item.id || `REJ-${Date.now()}-${Math.floor(Math.random()*1000)}`;
-        const sql = `INSERT INTO reject_master (id, name, sku, category, base_unit, conversions) VALUES (?, ?, ?, ?, ?, ?)`;
-        await pool.query(sql, [finalId, item.name, item.sku, item.category, item.baseUnit, JSON.stringify(item.conversions || [])]);
-        sendRes(res, 201, true, "Master reject ditambahkan", { id: finalId });
-    } catch (err) { handleError(res, err); }
+        await pool.query('INSERT INTO reject_master (id, name, sku, category, base_unit, conversions) VALUES (?,?,?,?,?,?)',
+            [i.id, i.name, i.sku, i.category, i.baseUnit, JSON.stringify(i.conversions || [])]);
+        sendRes(res, 201, true, "Master Reject dibuat");
+    } catch (e) { handleError(res, e); }
 });
 
 app.put('/api/reject/master/:id', async (req, res) => {
-    // Decoding parameter ID agar karakter seperti ':' tertangani dengan benar di query SQL
-    const requestId = decodeURIComponent(req.params.id);
-    console.log(`[API_REJECT] Update Request for ID: ${requestId}`);
-    
+    const id = decodeURIComponent(req.params.id).replace(/:/g, '-');
+    const i = req.body;
     try {
-        const body = req.body || {};
-        const payload = {
-            name: String(body.name || '').trim(),
-            sku: String(body.sku || '').trim(),
-            category: String(body.category || '').trim(),
-            baseUnit: body.baseUnit || body.base_unit || body.unit,
-            conversions: Array.isArray(body.conversions) ? body.conversions : []
-        };
-
-        if (!payload.name || !payload.baseUnit) {
-            return sendRes(res, 422, false, "Nama & satuan dasar wajib diisi");
-        }
-
-        const [result] = await pool.query(
-            `UPDATE reject_master 
-             SET name=?, sku=?, category=?, base_unit=?, conversions=? 
-             WHERE id=?`,
-            [
-                payload.name,
-                payload.sku,
-                payload.category,
-                payload.baseUnit,
-                JSON.stringify(payload.conversions),
-                requestId
-            ]
-        );
-
-        if (result.affectedRows === 0) {
-            return sendRes(res, 404, false, "Data reject tidak ditemukan di database VPS");
-        }
-
-        sendRes(res, 200, true, "Master reject diperbarui");
-    } catch (err) {
-        handleError(res, err, "Gagal update master reject pada database VPS.");
-    }
+        await pool.query('UPDATE reject_master SET name=?, sku=?, category=?, base_unit=?, conversions=? WHERE id=?',
+            [i.name, i.sku, i.category, i.baseUnit, JSON.stringify(i.conversions || []), id]);
+        sendRes(res, 200, true, "Master Reject diperbarui");
+    } catch (e) { handleError(res, e); }
 });
-
 
 app.delete('/api/reject/master/:id', async (req, res) => {
+    const id = decodeURIComponent(req.params.id).replace(/:/g, '-');
     try {
-        const id = decodeURIComponent(req.params.id);
-        await pool.query('DELETE FROM reject_master WHERE id = ?', [id]);
-        sendRes(res, 200, true, "Master reject dihapus");
-    } catch (err) { handleError(res, err); }
+        await pool.query('DELETE FROM reject_master WHERE id=?', [id]);
+        sendRes(res, 200, true, "Master Reject dihapus");
+    } catch (e) { handleError(res, e); }
 });
 
-// BULK DELETE REJECT MASTER
 app.delete('/api/reject/master/bulk', async (req, res) => {
-    const { ids } = req.body;
     try {
-        if (!Array.isArray(ids) || ids.length === 0) {
-            return sendRes(res, 400, false, "ID master reject tidak valid");
-        }
-        const sql = `DELETE FROM reject_master WHERE id IN (?)`;
-        const [result] = await pool.query(sql, [ids]);
-        sendRes(res, 200, true, `${result.affectedRows} master reject berhasil dihapus`);
-    } catch (err) {
-        handleError(res, err);
-    }
+        await pool.query('DELETE FROM reject_master WHERE id IN (?)', [req.body.ids]);
+        sendRes(res, 200, true, "Bulk delete reject berhasil");
+    } catch (e) { handleError(res, e); }
 });
 
 app.get('/api/reject/transactions', async (req, res) => {
     try {
-        const [rows] = await pool.query('SELECT * FROM reject_transactions ORDER BY date DESC, id DESC');
+        const [rows] = await pool.query('SELECT * FROM reject_transactions ORDER BY date DESC');
         res.json(rows.map(toCamel));
-    } catch (err) { handleError(res, err); }
+    } catch (e) { handleError(res, e); }
 });
 
 app.post('/api/reject/transactions', async (req, res) => {
-    const tx = req.body;
+    const t = req.body;
     try {
-        const sql = `INSERT INTO reject_transactions (id, date, items, created_at) VALUES (?, ?, ?, ?)`;
-        await pool.query(sql, [tx.id, new Date(tx.date), JSON.stringify(tx.items || []), new Date()]);
-        sendRes(res, 201, true, "Transaksi reject dicatat");
-    } catch (err) { handleError(res, err); }
+        await pool.query('INSERT INTO reject_transactions (id, date, items, created_at) VALUES (?,?,?,?)',
+            [t.id, new Date(t.date), JSON.stringify(t.items || []), new Date()]);
+        sendRes(res, 201, true, "Transaksi Reject disimpan");
+    } catch (e) { handleError(res, e); }
 });
 
-// --- MEDIA PLAYER ---
-
+// --- 6. MEDIA PLAYER MODULE ---
 app.get('/api/playlists', async (req, res) => {
     try {
         const [rows] = await pool.query('SELECT * FROM playlists ORDER BY created_at ASC');
         res.json(rows.map(toCamel));
-    } catch (err) { handleError(res, err); }
+    } catch (e) { handleError(res, e); }
 });
 
 app.post('/api/playlists', async (req, res) => {
-    const { id, name } = req.body;
     try {
-        await pool.query('INSERT INTO playlists (id, name, created_at) VALUES (?, ?, ?)', [id, name, new Date()]);
+        await pool.query('INSERT INTO playlists (id, name, created_at) VALUES (?,?,?)', [req.body.id, req.body.name, new Date()]);
         sendRes(res, 201, true, "Playlist dibuat");
-    } catch (err) { handleError(res, err); }
+    } catch (e) { handleError(res, e); }
 });
 
 app.delete('/api/playlists/:id', async (req, res) => {
     try {
-        await pool.query('DELETE FROM playlists WHERE id = ?', [req.params.id]);
+        await pool.query('DELETE FROM playlists WHERE id=?', [req.params.id]);
         sendRes(res, 200, true, "Playlist dihapus");
-    } catch (err) { handleError(res, err); }
+    } catch (e) { handleError(res, e); }
 });
 
 app.get('/api/playlists/:pid/items', async (req, res) => {
     try {
-        const [rows] = await pool.query('SELECT * FROM playlist_items WHERE playlist_id = ? ORDER BY created_at ASC', [req.params.pid]);
+        const [rows] = await pool.query('SELECT * FROM playlist_items WHERE playlist_id=? ORDER BY created_at ASC', [req.params.pid]);
         res.json(rows.map(toCamel));
-    } catch (err) { handleError(res, err); }
+    } catch (e) { handleError(res, e); }
 });
 
 app.post('/api/playlists/:pid/items', async (req, res) => {
     const v = req.body;
     try {
-        await pool.query('INSERT INTO playlist_items (id, playlist_id, title, url, video_id, created_at) VALUES (?, ?, ?, ?, ?, ?)', 
+        await pool.query('INSERT INTO playlist_items (id, playlist_id, title, url, video_id, created_at) VALUES (?,?,?,?,?,?)',
             [v.id, req.params.pid, v.title, v.url, v.videoId, new Date()]);
-        sendRes(res, 201, true, "Video ditambahkan ke playlist");
-    } catch (err) { handleError(res, err); }
+        sendRes(res, 201, true, "Video ditambahkan");
+    } catch (e) { handleError(res, e); }
 });
 
 app.delete('/api/playlists/items/:id', async (req, res) => {
     try {
-        await pool.query('DELETE FROM playlist_items WHERE id = ?', [req.params.id]);
-        sendRes(res, 200, true, "Video dihapus dari playlist");
-    } catch (err) { handleError(res, err); }
+        await pool.query('DELETE FROM playlist_items WHERE id=?', [req.params.id]);
+        sendRes(res, 200, true, "Video dihapus");
+    } catch (e) { handleError(res, e); }
 });
 
-// --- REPORTS (PDF) ---
-
+// --- 7. REPORTS EXPORT ---
 app.post('/api/reports/export', async (req, res) => {
-    const { startDate, endDate, type, filterType, selectedItemId } = req.body;
+    const { startDate, endDate, type } = req.body;
     try {
-        const [invRows] = await pool.query('SELECT * FROM inventory ORDER BY name ASC');
-        const [txRows] = await pool.query('SELECT * FROM transactions WHERE date BETWEEN ? AND ? ORDER BY date ASC', [`${startDate} 00:00:00`, `${endDate} 23:59:59`]);
-        const inventory = invRows.map(toCamel);
-        const transactions = txRows.map(toCamel);
         const doc = new PDFDocument({ margin: 30, size: 'A4' });
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', `attachment; filename=Report_${type}.pdf`);
         doc.pipe(res);
-        doc.rect(0, 0, 595.28, 80).fill('#1e293b');
-        doc.fillColor('#FFFFFF').fontSize(20).font('Helvetica-Bold').text("SmartInventory Pro Report", 30, 25);
-        doc.moveDown(5);
+
+        doc.fontSize(20).text(`LAPORAN ${type}`, { align: 'center' });
+        doc.fontSize(10).text(`Periode: ${startDate} s/d ${endDate}`, { align: 'center' });
+        doc.moveDown();
+
         if (type === 'TRANSACTIONS') {
-            const tableData = [];
-            transactions.forEach(t => {
-                if (filterType !== 'ALL' && t.type !== filterType) return;
-                t.items.forEach(item => {
-                    if (selectedItemId !== 'ALL' && item.itemId !== selectedItemId) return;
-                    tableData.push([t.date.split('T')[0], t.type, item.itemName, `${item.quantity} ${item.unit}`, t.referenceNumber || '-', t.performer || 'Admin']);
-                });
+            const [rows] = await pool.query('SELECT * FROM transactions WHERE date BETWEEN ? AND ?', [`${startDate} 00:00:00`, `${endDate} 23:59:59`]);
+            const tableData = rows.flatMap(r => {
+                const tx = toCamel(r);
+                return tx.items.map(it => [tx.date.toISOString().split('T')[0], tx.type, it.itemName, it.quantity, it.unit]);
             });
-            await doc.table({ title: "MUTASI BARANG", headers: ["Tgl", "Tipe", "Nama", "Qty", "Ref", "User"], rows: tableData });
+            await doc.table({
+                headers: ['Tanggal', 'Tipe', 'Nama Barang', 'Qty', 'Unit'],
+                rows: tableData
+            });
         }
         doc.end();
-    } catch (err) { handleError(res, err); }
+    } catch (e) { handleError(res, e); }
 });
 
-// --- SYSTEM RESET ---
-
+// --- 8. SYSTEM MAINTENANCE ---
 app.post('/api/system/reset', async (req, res) => {
     const conn = await pool.getConnection();
     try {
@@ -476,25 +334,12 @@ app.post('/api/system/reset', async (req, res) => {
         await conn.query('DELETE FROM users WHERE username != "admin"');
         await conn.query('SET FOREIGN_KEY_CHECKS = 1');
         await conn.commit();
-        sendRes(res, 200, true, "Sistem berhasil direset");
-    } catch (err) {
-        if (conn) await conn.rollback();
-        handleError(res, err);
-    } finally { if (conn) conn.release(); }
+        sendRes(res, 200, true, "Database berhasil direset");
+    } catch (e) { await conn.rollback(); handleError(res, e); }
+    finally { conn.release(); }
 });
-
-app.use((err, req, res, next) => {
-    console.error("UNHANDLED_MIDDLEWARE_ERROR:", err);
-    res.status(500).json({
-        success: false,
-        message: "Unhandled server error",
-        error: err.message || String(err)
-    });
-});
-
 
 // --- START SERVER ---
 app.listen(PORT, '0.0.0.0', () => {
-    console.log(`SmartInventory Pro API Fixed v1.0.4 - PORT ${PORT}`);
-    console.log(`Listening on ALL interfaces (0.0.0.0)`);
+    console.log(`SmartInventory All-in-One Backend v1.2.0 is running on PORT ${PORT}`);
 });
