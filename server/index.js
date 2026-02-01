@@ -296,12 +296,42 @@ app.post('/api/reject/master', async (req, res) => {
 });
 
 app.put('/api/reject/master/:id', async (req, res) => {
-    const item = req.body;
+    const body = req.body || {};
+
+    // NORMALISASI PAYLOAD (ANTI FE ERROR)
+    const payload = {
+        name: body.name ?? '',
+        sku: body.sku ?? '',
+        category: body.category ?? '',
+        baseUnit: body.baseUnit ?? body.base_unit ?? body.unit ?? null,
+        conversions: Array.isArray(body.conversions) ? body.conversions : []
+    };
+
+    // VALIDASI MINIMAL (WAJIB)
+    if (!payload.name || !payload.baseUnit) {
+        return sendRes(res, 400, false, "Nama & satuan dasar wajib diisi");
+    }
+
     try {
-        const sql = `UPDATE reject_master SET name=?, sku=?, category=?, base_unit=?, conversions=? WHERE id=?`;
-        await pool.query(sql, [item.name, item.sku, item.category, item.baseUnit, JSON.stringify(item.conversions || []), req.params.id]);
+        const sql = `
+          UPDATE reject_master 
+          SET name=?, sku=?, category=?, base_unit=?, conversions=? 
+          WHERE id=?
+        `;
+
+        await pool.query(sql, [
+            payload.name,
+            payload.sku,
+            payload.category,
+            payload.baseUnit,
+            JSON.stringify(payload.conversions),
+            req.params.id
+        ]);
+
         sendRes(res, 200, true, "Master reject diperbarui");
-    } catch (err) { handleError(res, err); }
+    } catch (err) {
+        handleError(res, err, "Gagal memperbarui master reject");
+    }
 });
 
 app.delete('/api/reject/master/:id', async (req, res) => {
