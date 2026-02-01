@@ -489,6 +489,15 @@ app.post('/api/system/reset', async (req, res) => {
         handleError(res, err);
     } finally { if (conn) conn.release(); }
 });
+app.use((err, req, res, next) => {
+    console.error("UNHANDLED ERROR:", err);
+    res.status(500).json({
+        success: false,
+        message: "Unhandled server error",
+        error: err.message || String(err)
+    });
+});
+
 
 // --- START SERVER ---
 app.listen(PORT, '0.0.0.0', () => {
