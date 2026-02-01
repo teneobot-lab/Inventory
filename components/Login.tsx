@@ -1,5 +1,7 @@
+
 import React, { useState, useEffect } from 'react';
-import { User, Lock, Loader2, CheckCircle2, Wifi, WifiOff } from 'lucide-react';
+// Added AlertCircle to imports from lucide-react
+import { User, Lock, Loader2, CheckCircle2, Wifi, WifiOff, RefreshCw, AlertCircle } from 'lucide-react';
 import { Toast } from './Toast';
 import { api } from '../services/api';
 
@@ -14,6 +16,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
   
   // Connection Status State
   const [serverStatus, setServerStatus] = useState<'checking' | 'online' | 'offline'>('checking');
+  const [dbStatus, setDbStatus] = useState<boolean>(false);
   
   // Animation States
   const [isLoading, setIsLoading] = useState(false);
@@ -22,25 +25,35 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
     show: false, message: '', type: 'success'
   });
 
-  // Check Server Status on Mount
-  useEffect(() => {
-    const checkServer = async () => {
-      setServerStatus('checking');
-      const isOnline = await api.checkConnection();
-      setServerStatus(isOnline ? 'online' : 'offline');
-      if (!isOnline) {
-         setToast({ show: true, message: 'Gagal terhubung ke Server Backend (VPS).', type: 'error' });
+  const checkServer = async () => {
+    setServerStatus('checking');
+    try {
+      const status = await api.checkConnection();
+      setServerStatus(status.online ? 'online' : 'offline');
+      setDbStatus(status.db);
+      
+      if (!status.online) {
+         setToast({ show: true, message: 'Server API tidak merespons. Pastikan backend di VPS menyala.', type: 'error' });
+      } else if (!status.db) {
+         setToast({ show: true, message: 'API Online, tapi gagal terhubung ke Database MySQL.', type: 'error' });
       }
-    };
+    } catch (e) {
+      setServerStatus('offline');
+    }
+  };
+
+  useEffect(() => {
     checkServer();
   }, []);
 
   const handleLoginProcess = (e: React.FormEvent) => {
     e.preventDefault();
     if (isLoading) return;
+    
+    // Memberikan izin login jika user memaksa meskipun status "offline" (sebagai fallback)
     if (serverStatus === 'offline') {
-        setToast({ show: true, message: 'Server Offline. Cek koneksi VPS.', type: 'error' });
-        return;
+        const confirmForce = confirm("Server terdeteksi offline. Coba paksa login?");
+        if (!confirmForce) return;
     }
 
     if (!username || !password) {
@@ -51,8 +64,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
     setIsLoading(true);
     setProgress(0);
 
-    // Simulate Network/Verification Process
-    const duration = 2000; 
+    const duration = 1500; 
     const intervalTime = 20;
     const steps = duration / intervalTime;
     let currentStep = 0;
@@ -70,25 +82,16 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
   };
 
   const finalizeLogin = async () => {
-    let isValid = false;
     try {
       const user = await api.login(username, password);
-      if (user) isValid = true;
+      if (user) {
+         setProgress(100);
+         setToast({ show: true, message: 'Login Berhasil! Mengalihkan...', type: 'success' });
+         setTimeout(() => onLogin(username, password), 1000);
+      } else {
+         throw new Error("Invalid");
+      }
     } catch (error) {
-      console.error("Login check failed", error);
-      isValid = false;
-    }
-
-    if (isValid) {
-       // SUCCESS FLOW
-       setProgress(100);
-       setToast({ show: true, message: 'Login Berhasil! Mengalihkan ke Dashboard...', type: 'success' });
-       
-       setTimeout(() => {
-         onLogin(username, password); 
-       }, 1500);
-    } else {
-       // ERROR FLOW
        setIsLoading(false);
        setProgress(0);
        setError(true);
@@ -107,42 +110,52 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
         onClose={() => setToast(prev => ({ ...prev, show: false }))} 
       />
 
-      {/* Background gradient effect to match depth */}
       <div className="w-full max-w-sm flex flex-col items-center relative z-10">
         
-        <div className="mb-8 text-center">
-            <div className="w-16 h-16 bg-white/10 rounded-2xl flex items-center justify-center mx-auto mb-4 backdrop-blur-sm shadow-2xl border border-white/20 animate-fade-in-up">
+        <div className="mb-8 text-center animate-fade-in-up">
+            <div className="w-16 h-16 bg-white/10 rounded-2xl flex items-center justify-center mx-auto mb-4 backdrop-blur-sm shadow-2xl border border-white/20">
                <Lock size={32} className="text-white" />
             </div>
-            <h1 className="text-3xl font-bold text-white tracking-widest uppercase text-center drop-shadow-lg">
-            SmartInventory
+            <h1 className="text-3xl font-bold text-white tracking-widest uppercase drop-shadow-lg">
+              SmartInventory
             </h1>
-            <p className="text-slate-400 text-xs tracking-widest mt-2 uppercase">Secure Access Portal</p>
+            <p className="text-slate-400 text-xs tracking-widest mt-2 uppercase font-medium">Secure Access Portal</p>
         </div>
 
-        {/* Server Status Indicator */}
-        <div className={`mb-6 px-4 py-2 rounded-full border flex items-center gap-2 text-xs font-semibold transition-all ${
-            serverStatus === 'online' ? 'bg-green-500/20 border-green-500/50 text-green-300' : 
-            serverStatus === 'offline' ? 'bg-red-500/20 border-red-500/50 text-red-300' : 
-            'bg-slate-500/20 border-slate-500/50 text-slate-300'
-        }`}>
-            {serverStatus === 'online' && <Wifi size={14} />}
-            {serverStatus === 'offline' && <WifiOff size={14} />}
-            {serverStatus === 'checking' && <Loader2 size={14} className="animate-spin" />}
-            
-            <span>
-                {serverStatus === 'online' ? 'Server Connected' : 
-                 serverStatus === 'offline' ? 'Server Unreachable' : 
-                 'Connecting to Backend...'}
-            </span>
+        {/* Server Status Indicator dengan Tombol Refresh */}
+        <div className="flex items-center gap-2 mb-6">
+          <div className={`px-4 py-2 rounded-full border flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider transition-all ${
+              serverStatus === 'online' ? (dbStatus ? 'bg-green-500/20 border-green-500/50 text-green-300' : 'bg-yellow-500/20 border-yellow-500/50 text-yellow-300') : 
+              serverStatus === 'offline' ? 'bg-red-500/20 border-red-500/50 text-red-300' : 
+              'bg-slate-500/20 border-slate-500/50 text-slate-300'
+          }`}>
+              {serverStatus === 'online' && (dbStatus ? <Wifi size={14} /> : <AlertCircle size={14} />)}
+              {serverStatus === 'offline' && <WifiOff size={14} />}
+              {serverStatus === 'checking' && <Loader2 size={14} className="animate-spin" />}
+              
+              <span>
+                  {serverStatus === 'online' ? (dbStatus ? 'System Online' : 'DB Connection Error') : 
+                   serverStatus === 'offline' ? 'Server Unreachable' : 
+                   'Checking Status...'}
+              </span>
+          </div>
+          
+          <button 
+            type="button"
+            onClick={checkServer}
+            disabled={serverStatus === 'checking'}
+            className="p-2 rounded-full bg-white/10 text-white hover:bg-white/20 transition-colors disabled:opacity-50"
+            title="Cek Ulang Status"
+          >
+            <RefreshCw size={14} className={serverStatus === 'checking' ? 'animate-spin' : ''} />
+          </button>
         </div>
 
         <form onSubmit={handleLoginProcess} className={`w-full space-y-6 transition-all duration-300 ${error ? 'animate-shake' : ''}`}>
           
-          {/* Username Field - Icon Left */}
           <div className="relative group">
-            <div className="absolute left-0 top-0 bottom-0 w-12 h-12 bg-white rounded-full flex items-center justify-center z-10 shadow-lg transition-transform group-focus-within:scale-110">
-               <User size={24} className="text-slate-800" />
+            <div className="absolute left-0 top-0 bottom-0 w-12 h-12 bg-white rounded-full flex items-center justify-center z-10 shadow-lg transition-transform group-focus-within:scale-105">
+               <User size={20} className="text-slate-800" />
             </div>
             <input 
               type="text" 
@@ -150,11 +163,10 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
               value={username}
               disabled={isLoading}
               onChange={(e) => setUsername(e.target.value)}
-              className="w-full h-12 bg-white/10 text-white placeholder-slate-400 pl-16 pr-6 rounded-full border border-white/10 focus:border-white/50 focus:bg-white/20 transition-all shadow-inner outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full h-12 bg-white/10 text-white placeholder-slate-400 pl-16 pr-6 rounded-full border border-white/10 focus:border-white/50 focus:bg-white/20 transition-all shadow-inner outline-none"
             />
           </div>
 
-          {/* Password Field - Icon Right */}
           <div className="relative group">
             <input 
               type="password" 
@@ -162,50 +174,42 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
               value={password}
               disabled={isLoading}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full h-12 bg-white/10 text-white placeholder-slate-400 pl-6 pr-16 rounded-full border border-white/10 focus:border-white/50 focus:bg-white/20 transition-all shadow-inner outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full h-12 bg-white/10 text-white placeholder-slate-400 pl-6 pr-16 rounded-full border border-white/10 focus:border-white/50 focus:bg-white/20 transition-all shadow-inner outline-none"
             />
-             <div className="absolute right-0 top-0 bottom-0 w-12 h-12 bg-white rounded-full flex items-center justify-center z-10 shadow-lg transition-transform group-focus-within:scale-110">
-               <Lock size={24} className="text-slate-800" />
+             <div className="absolute right-0 top-0 bottom-0 w-12 h-12 bg-white rounded-full flex items-center justify-center z-10 shadow-lg transition-transform group-focus-within:scale-105">
+               <Lock size={20} className="text-slate-800" />
             </div>
           </div>
 
-          {/* LOGIN BUTTON OR PROGRESS BAR */}
           <div className="h-14 relative">
             {isLoading ? (
                <div className="w-full h-full flex flex-col justify-center animate-fade-in">
                   <div className="flex justify-between text-[10px] uppercase font-bold text-teal-300 mb-1.5 px-2">
                      <span className="flex items-center gap-1">
                         {progress === 100 ? <CheckCircle2 size={10}/> : <Loader2 size={10} className="animate-spin"/>}
-                        {progress === 100 ? 'Verified' : 'Verifying Credentials...'}
+                        {progress === 100 ? 'Verified' : 'Authorizing...'}
                      </span>
                      <span>{Math.round(progress)}%</span>
                   </div>
-                  <div className="w-full h-3 bg-slate-900/50 rounded-full overflow-hidden border border-white/10 backdrop-blur-sm relative">
-                     {/* Animated Gradient Bar */}
+                  <div className="w-full h-2 bg-slate-900/50 rounded-full overflow-hidden border border-white/10">
                      <div 
-                        className="h-full bg-gradient-to-r from-teal-400 via-cyan-400 to-blue-500 shadow-[0_0_10px_rgba(45,212,191,0.5)] transition-all duration-75 ease-out relative"
+                        className="h-full bg-gradient-to-r from-teal-400 to-blue-500 shadow-[0_0_10px_rgba(45,212,191,0.5)] transition-all duration-75 ease-out"
                         style={{ width: `${progress}%` }}
-                     >
-                        <div className="absolute inset-0 bg-white/30 w-full h-full animate-[shimmer_1s_infinite] skew-x-12"></div>
-                     </div>
+                     />
                   </div>
                </div>
             ) : (
                <button 
                   type="submit"
-                  className="w-full h-12 bg-white text-slate-900 font-bold text-lg rounded-full hover:bg-slate-200 hover:scale-[1.02] active:scale-95 transition-all shadow-lg uppercase tracking-wider flex items-center justify-center gap-2 group"
+                  className="w-full h-12 bg-white text-slate-900 font-bold text-sm rounded-full hover:bg-slate-200 hover:scale-[1.02] active:scale-95 transition-all shadow-lg uppercase tracking-widest flex items-center justify-center gap-2 group"
                >
-                  Login <span className="group-hover:translate-x-1 transition-transform">→</span>
+                  Sign In <span className="group-hover:translate-x-1 transition-transform">→</span>
                </button>
             )}
           </div>
 
         </form>
       </div>
-      
-      {/* Decorative Elements */}
-      <div className="absolute -top-20 -left-20 w-64 h-64 bg-teal-500/20 rounded-full blur-3xl"></div>
-      <div className="absolute -bottom-20 -right-20 w-80 h-80 bg-blue-500/20 rounded-full blur-3xl"></div>
     </div>
   );
 };

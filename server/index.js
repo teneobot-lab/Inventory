@@ -16,7 +16,6 @@ app.use(cors({
     allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
-// Limit ditingkatkan ke 100mb untuk menangani array foto base64 yang besar dari sistem audit/transaksi
 app.use(bodyParser.json({ limit: '100mb' }));
 app.use(bodyParser.urlencoded({ limit: '100mb', extended: true }));
 
@@ -36,63 +35,51 @@ const pool = mysql.createPool(dbConfig);
 
 // --- UTILITIES & HELPERS ---
 
-/**
- * Konversi snake_case dari DB ke camelCase untuk Frontend
- * Juga melakukan parsing otomatis pada kolom JSON
- */
 const toCamel = (o) => {
     if (!o || typeof o !== 'object') return o;
     const newO = {};
     Object.keys(o).forEach(key => {
         const newKey = key.replace(/_([a-z])/g, (g) => g[1].toUpperCase());
         let value = o[key];
-        
-        // Daftar kolom yang harus di-parse sebagai JSON
         const jsonFields = ['conversions', 'items', 'photos'];
         if (jsonFields.includes(newKey) || jsonFields.includes(key)) {
             if (typeof value === 'string' && value.trim() !== '') {
-                try { 
-                    value = JSON.parse(value); 
-                } catch (e) { 
-                    console.warn(`Failed to parse JSON for key ${key}:`, e.message);
-                    value = []; 
-                }
-            } else if (value === null) { 
-                value = []; 
-            }
+                try { value = JSON.parse(value); } catch (e) { value = []; }
+            } else if (value === null) { value = []; }
         }
         newO[newKey] = value;
     });
     return newO;
 };
 
-/**
- * Format Standar Response API
- */
 const sendRes = (res, code, success, message, data = null) => {
     res.status(code).json({ success, message, data });
 };
 
-/**
- * Global Error Handler untuk Backend
- */
 const handleError = (res, err, customMsg = "Internal Server Error") => {
     console.error("CRITICAL_ERROR:", err);
-    const devError = process.env.NODE_ENV === 'development' ? err.message : null;
-    sendRes(res, 500, false, customMsg, devError);
+    sendRes(res, 500, false, customMsg, err.message);
 };
 
 // --- SYSTEM & HEALTH ROUTES ---
 
 app.get('/api/health', async (req, res) => {
-    let conn;
+    let dbStatus = false;
     try {
-        conn = await pool.getConnection();
-        await conn.ping();
-        sendRes(res, 200, true, "API & Database Online", { version: "1.0.1", uptime: process.uptime() });
+        // Pengecekan koneksi database yang sangat cepat (timeout di level query)
+        const [rows] = await pool.query('SELECT 1 as ok');
+        if (rows && rows[0].ok === 1) dbStatus = true;
     } catch (err) {
-        handleError(res, err, "Database Offline");
-    } finally { if (conn) conn.release(); }
+        console.error("Health DB Error:", err.message);
+        dbStatus = false;
+    }
+    
+    sendRes(res, 200, true, "SmartInventory API Status", { 
+        api: "online", 
+        database: dbStatus,
+        uptime: Math.round(process.uptime()),
+        timestamp: new Date().toISOString()
+    });
 });
 
 // --- AUTH & USER MANAGEMENT ---
@@ -184,7 +171,7 @@ app.post('/api/inventory/bulk-delete', async (req, res) => {
     } catch (err) { handleError(res, err); }
 });
 
-// --- TRANSACTION MODULE (ACID COMPLIANT) ---
+// --- TRANSACTION MODULE ---
 
 app.get('/api/transactions', async (req, res) => {
     try {
@@ -199,7 +186,6 @@ app.post('/api/transactions', async (req, res) => {
     try {
         await conn.beginTransaction();
 
-        // 1. Validasi stok untuk transaksi OUT
         if (tx.type === 'OUT') {
             for (const item of tx.items) {
                 const [inv] = await conn.query('SELECT stock, name FROM inventory WHERE id = ? FOR UPDATE', [item.itemId]);
@@ -209,11 +195,9 @@ app.post('/api/transactions', async (req, res) => {
             }
         }
 
-        // 2. Insert Transaksi
         const sqlTx = `INSERT INTO transactions (id, type, date, reference_number, supplier, notes, photos, items, performer) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`;
-        await conn.query(sqlTx, [tx.id, tx.type, new Date(tx.date), tx.referenceNumber || null, tx.supplier || null, tx.notes || '', JSON.stringify(tx.photos || []), JSON.stringify(tx.items || []), tx.performer || 'Admin']);
+        await conn.query(sqlTx, [tx.id, tx.type, new Date(tx.date), tx.referenceNumber || null, tx.supplier || null, tx.notes || '', JSON.stringify(tx.photos || []), JSON.stringify(tx.items || []), JSON.stringify(tx.items || []), tx.performer || 'Admin']);
 
-        // 3. Update Stok di Inventaris
         for (const item of tx.items) {
             let updateSql = tx.type === 'IN' ? 'UPDATE inventory SET stock = stock + ? WHERE id = ?' : 'UPDATE inventory SET stock = stock - ? WHERE id = ?';
             await conn.query(updateSql, [item.quantity, item.itemId]);
@@ -233,23 +217,18 @@ app.put('/api/transactions/:id', async (req, res) => {
     const conn = await pool.getConnection();
     try {
         await conn.beginTransaction();
-        
-        // 1. Ambil data transaksi lama untuk membalikan stok
         const [oldRows] = await conn.query('SELECT * FROM transactions WHERE id = ? FOR UPDATE', [txId]);
         if (oldRows.length === 0) throw new Error("Transaksi tidak ditemukan");
         const oldTx = toCamel(oldRows[0]);
 
-        // Balikan stok (Revert)
         for (const item of oldTx.items) {
             let revertSql = oldTx.type === 'IN' ? 'UPDATE inventory SET stock = stock - ? WHERE id = ?' : 'UPDATE inventory SET stock = stock + ? WHERE id = ?';
             await conn.query(revertSql, [item.quantity, item.itemId]);
         }
 
-        // 2. Update data transaksi
         const sqlUpdate = `UPDATE transactions SET date=?, reference_number=?, supplier=?, notes=?, photos=?, items=?, performer=? WHERE id=?`;
         await conn.query(sqlUpdate, [new Date(newTx.date), newTx.referenceNumber || null, newTx.supplier || null, newTx.notes || '', JSON.stringify(newTx.photos || []), JSON.stringify(newTx.items || []), newTx.performer || 'Admin', txId]);
 
-        // 3. Terapkan stok baru (Apply New)
         for (const item of newTx.items) {
             let applySql = newTx.type === 'IN' ? 'UPDATE inventory SET stock = stock + ? WHERE id = ?' : 'UPDATE inventory SET stock = stock - ? WHERE id = ?';
             await conn.query(applySql, [item.quantity, item.itemId]);
@@ -271,7 +250,6 @@ app.delete('/api/transactions/:id', async (req, res) => {
         if (rows.length === 0) throw new Error("Transaksi tidak ditemukan");
         const tx = toCamel(rows[0]);
 
-        // Balikan stok saat transaksi dihapus
         for (const item of tx.items) {
             let revertSql = tx.type === 'IN' ? 'UPDATE inventory SET stock = stock - ? WHERE id = ?' : 'UPDATE inventory SET stock = stock + ? WHERE id = ?';
             await conn.query(revertSql, [item.quantity, item.itemId]);
@@ -336,7 +314,7 @@ app.post('/api/reject/transactions', async (req, res) => {
     } catch (err) { handleError(res, err); }
 });
 
-// --- MEDIA PLAYER (PLAYLISTS) ---
+// --- MEDIA PLAYER ---
 
 app.get('/api/playlists', async (req, res) => {
     try {
@@ -383,84 +361,35 @@ app.delete('/api/playlists/items/:id', async (req, res) => {
     } catch (err) { handleError(res, err); }
 });
 
-// --- REPORTING MODULE (PDF EXPORT) ---
+// --- REPORTS (PDF) ---
 
 app.post('/api/reports/export', async (req, res) => {
     const { startDate, endDate, type, filterType, selectedItemId } = req.body;
-    
     try {
         const [invRows] = await pool.query('SELECT * FROM inventory ORDER BY name ASC');
         const [txRows] = await pool.query('SELECT * FROM transactions WHERE date BETWEEN ? AND ? ORDER BY date ASC', [`${startDate} 00:00:00`, `${endDate} 23:59:59`]);
-        
         const inventory = invRows.map(toCamel);
         const transactions = txRows.map(toCamel);
-
         const doc = new PDFDocument({ margin: 30, size: 'A4' });
         res.setHeader('Content-Type', 'application/pdf');
-        res.setHeader('Content-Disposition', `attachment; filename=Report_${type}_${startDate}.pdf`);
+        res.setHeader('Content-Disposition', `attachment; filename=Report_${type}.pdf`);
         doc.pipe(res);
-
-        // Header PDF
         doc.rect(0, 0, 595.28, 80).fill('#1e293b');
         doc.fillColor('#FFFFFF').fontSize(20).font('Helvetica-Bold').text("SmartInventory Pro Report", 30, 25);
-        doc.fontSize(10).font('Helvetica').fillColor('#cbd5e1').text(`Dibuat pada: ${new Date().toLocaleString('id-ID')}`, 30, 50);
-        doc.text(`Periode: ${startDate} s/d ${endDate}`, 0, 50, { align: 'right', width: 565 });
-        
         doc.moveDown(5);
-
         if (type === 'TRANSACTIONS') {
             const tableData = [];
             transactions.forEach(t => {
                 if (filterType !== 'ALL' && t.type !== filterType) return;
                 t.items.forEach(item => {
                     if (selectedItemId !== 'ALL' && item.itemId !== selectedItemId) return;
-                    tableData.push([
-                        t.date.split('T')[0],
-                        t.type,
-                        item.itemName,
-                        `${item.quantity} ${item.unit}`,
-                        t.referenceNumber || '-',
-                        t.performer || 'Admin'
-                    ]);
+                    tableData.push([t.date.split('T')[0], t.type, item.itemName, `${item.quantity} ${item.unit}`, t.referenceNumber || '-', t.performer || 'Admin']);
                 });
             });
-
-            await doc.table({
-                title: "LAPORAN MUTASI BARANG",
-                headers: ["Tanggal", "Tipe", "Barang", "Qty", "Ref", "Petugas"],
-                rows: tableData
-            }, { 
-                prepareHeader: () => doc.font("Helvetica-Bold").fontSize(9),
-                prepareRow: () => doc.font("Helvetica").fontSize(8) 
-            });
-
-        } else if (type === 'MONTHLY') {
-            const balanceRows = inventory.map(item => {
-                if (selectedItemId !== 'ALL' && item.id !== selectedItemId) return null;
-                
-                return [
-                    item.sku,
-                    item.name,
-                    `${item.stock} ${item.unit}`,
-                    `Rp ${new Intl.NumberFormat('id-ID').format(item.price)}`
-                ];
-            }).filter(Boolean);
-
-            await doc.table({
-                title: "LAPORAN SALDO STOK SAAT INI",
-                headers: ["SKU", "Nama Barang", "Stok", "Harga Satuan"],
-                rows: balanceRows
-            }, { 
-                prepareHeader: () => doc.font("Helvetica-Bold").fontSize(9),
-                prepareRow: () => doc.font("Helvetica").fontSize(8) 
-            });
+            await doc.table({ title: "MUTASI BARANG", headers: ["Tgl", "Tipe", "Nama", "Qty", "Ref", "User"], rows: tableData });
         }
-
         doc.end();
-
-    } catch (err) {
-        handleError(res, err, "Gagal membuat PDF");
-    }
+    } catch (err) { handleError(res, err); }
 });
 
 // --- SYSTEM RESET ---
@@ -488,6 +417,5 @@ app.post('/api/system/reset', async (req, res) => {
 
 // --- START SERVER ---
 app.listen(PORT, '0.0.0.0', () => {
-    console.log(`SmartInventory Pro Backend v1.0.1 listening on PORT ${PORT}`);
-    console.log(`ACID Logic Enabled. PDF Engine Ready. Standalone Reject Module Ready.`);
+    console.log(`SmartInventory Pro API v1.0.1 - PORT ${PORT}`);
 });

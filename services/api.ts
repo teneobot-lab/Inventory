@@ -21,10 +21,11 @@ const handleResponse = async (res: Response) => {
 };
 
 export const api = {
-  checkConnection: async (): Promise<boolean> => {
+  checkConnection: async (): Promise<{online: boolean, db: boolean}> => {
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 4000);
+      // Meningkatkan timeout ke 8 detik untuk mengakomodasi latensi VPS/Jaringan
+      const timeoutId = setTimeout(() => controller.abort(), 8000);
       
       const res = await fetch(`${API_URL}/health`, { 
         method: 'GET', 
@@ -36,13 +37,16 @@ export const api = {
       
       if (res.ok) {
         const data = await res.json();
-        // Backend mengembalikan { success: true, ... }
-        return data.success === true;
+        // Backend mengembalikan { success: true, data: { database: true } }
+        return { 
+          online: data.success === true, 
+          db: data.data?.database === true 
+        };
       }
-      return false;
+      return { online: false, db: false };
     } catch (e) {
       console.warn("API Connection Check Failed:", e);
-      return false;
+      return { online: false, db: false };
     }
   },
 
@@ -54,7 +58,6 @@ export const api = {
     });
     if (!res.ok) return null;
     const data = await res.json();
-    // Backend menggunakan helper sendRes yang memasukkan object ke properti 'data'
     return data.success ? data.data : null;
   },
 
@@ -86,19 +89,12 @@ export const api = {
     return await handleResponse(res);
   },
 
-  // Transactions
   getTransactions: async (): Promise<Transaction[]> => {
     try {
         const res = await fetch(`${API_URL}/transactions`);
-        if(!res.ok) {
-            console.error("Server returned error fetching transactions");
-            return [];
-        }
+        if(!res.ok) return [];
         return await res.json();
-    } catch (e) { 
-        console.error("Network error fetching transactions:", e); 
-        return []; 
-    }
+    } catch (e) { return []; }
   },
   addTransaction: async (tx: Transaction) => {
     const res = await fetch(`${API_URL}/transactions`, { method: 'POST', headers, body: JSON.stringify(tx) });
@@ -113,7 +109,6 @@ export const api = {
     await handleResponse(res);
   },
 
-  // Users
   getUsers: async (): Promise<User[]> => {
     const res = await fetch(`${API_URL}/users`);
     return res.ok ? await res.json() : [];
@@ -131,7 +126,6 @@ export const api = {
     await handleResponse(res);
   },
 
-  // Reject Master Data
   getRejectMaster: async (): Promise<RejectItem[]> => {
     const res = await fetch(`${API_URL}/reject/master`);
     return res.ok ? await res.json() : [];
@@ -149,7 +143,6 @@ export const api = {
     await handleResponse(res);
   },
 
-  // Reject Transactions
   getRejectTransactions: async (): Promise<RejectTransaction[]> => {
     const res = await fetch(`${API_URL}/reject/transactions`);
     return res.ok ? await res.json() : [];
@@ -159,7 +152,6 @@ export const api = {
     await handleResponse(res);
   },
 
-  // Playlists
   getPlaylists: async (): Promise<Playlist[]> => {
     const res = await fetch(`${API_URL}/playlists`);
     return res.ok ? await res.json() : [];
@@ -186,7 +178,6 @@ export const api = {
     await handleResponse(res);
   },
 
-  // System
   resetDatabase: async (): Promise<{ success: boolean; message?: string; error?: string }> => {
     const res = await fetch(`${API_URL}/system/reset`, { method: 'POST', headers });
     return res.json();
