@@ -291,7 +291,7 @@ app.get('/api/reject/master', async (req, res) => {
 app.post('/api/reject/master', async (req, res) => {
     const item = req.body;
     try {
-        // ERP HARDENING: Generate ID on server using alphanumeric only to avoid URL special chars
+        // Alphanumeric only ID generation
         const finalId = item.id || `REJ-${Date.now()}-${Math.floor(Math.random()*1000)}`;
         const sql = `INSERT INTO reject_master (id, name, sku, category, base_unit, conversions) VALUES (?, ?, ?, ?, ?, ?)`;
         await pool.query(sql, [finalId, item.name, item.sku, item.category, item.baseUnit, JSON.stringify(item.conversions || [])]);
@@ -300,8 +300,9 @@ app.post('/api/reject/master', async (req, res) => {
 });
 
 app.put('/api/reject/master/:id', async (req, res) => {
-    const requestId = req.params.id;
-    console.log(`[API] PUT Reject Master Request ID: ${requestId}`);
+    // Decoding parameter ID agar karakter seperti ':' tertangani dengan benar di query SQL
+    const requestId = decodeURIComponent(req.params.id);
+    console.log(`[API_REJECT] Update Request for ID: ${requestId}`);
     
     try {
         const body = req.body || {};
@@ -314,7 +315,6 @@ app.put('/api/reject/master/:id', async (req, res) => {
         };
 
         if (!payload.name || !payload.baseUnit) {
-            console.warn(`[API] Reject Master Update Validation Failed for ID: ${requestId}`);
             return sendRes(res, 422, false, "Nama & satuan dasar wajib diisi");
         }
 
@@ -333,22 +333,20 @@ app.put('/api/reject/master/:id', async (req, res) => {
         );
 
         if (result.affectedRows === 0) {
-            console.warn(`[API] Reject Master Update: ID NOT FOUND - ${requestId}`);
-            return sendRes(res, 404, false, "Data reject tidak ditemukan di database");
+            return sendRes(res, 404, false, "Data reject tidak ditemukan di database VPS");
         }
 
-        console.log(`[API] Reject Master Update SUCCESS for ID: ${requestId}`);
         sendRes(res, 200, true, "Master reject diperbarui");
     } catch (err) {
-        console.error("PUT REJECT ERROR DETAILED:", err);
-        handleError(res, err, "Gagal update master reject. Cek koneksi database.");
+        handleError(res, err, "Gagal update master reject pada database VPS.");
     }
 });
 
 
 app.delete('/api/reject/master/:id', async (req, res) => {
     try {
-        await pool.query('DELETE FROM reject_master WHERE id = ?', [req.params.id]);
+        const id = decodeURIComponent(req.params.id);
+        await pool.query('DELETE FROM reject_master WHERE id = ?', [id]);
         sendRes(res, 200, true, "Master reject dihapus");
     } catch (err) { handleError(res, err); }
 });
@@ -497,6 +495,6 @@ app.use((err, req, res, next) => {
 
 // --- START SERVER ---
 app.listen(PORT, '0.0.0.0', () => {
-    console.log(`SmartInventory Pro API Fixed v1.0.3 - PORT ${PORT}`);
-    console.log(`DB Host: ${dbConfig.host}`);
+    console.log(`SmartInventory Pro API Fixed v1.0.4 - PORT ${PORT}`);
+    console.log(`Listening on ALL interfaces (0.0.0.0)`);
 });

@@ -9,22 +9,29 @@ const headers = {
 
 /**
  * Enterprise-Grade Response Handler
- * Menangani parsing JSON, deteksi error HTTP, dan fallback pesan error.
+ * Memberikan pesan yang sangat spesifik jika terjadi kegagalan infrastruktur (502).
  */
 const handleResponse = async (res: Response) => {
   const contentType = res.headers.get('content-type');
   
-  // Jika response bukan JSON (misal: 502 HTML page dari Nginx/Vercel)
   if (!contentType || !contentType.includes('application/json')) {
     const textError = await res.text();
-    console.error("Non-JSON Error Response:", textError);
-    throw new Error(`Server Error (${res.status}): Gateway Backend tidak merespons (Bad Gateway). Pastikan Server VPS & Port Aktif.`);
+    console.error("Critical Infrastructure Error:", textError);
+    
+    // Memberikan instruksi spesifik kepada user/admin jika terjadi 502
+    if (res.status === 502) {
+      throw new Error(`Server Error (502 Bad Gateway): Vercel tidak bisa terhubung ke VPS (89.21.85.28:3010). 
+      1. Pastikan Port 3010 sudah dibuka di Firewall/Security Group VPS.
+      2. Pastikan backend mendengarkan di 0.0.0.0 (Bukan localhost).`);
+    }
+    
+    throw new Error(`Server Error (${res.status}): Respons server tidak valid (Bukan JSON).`);
   }
 
   const data = await res.json();
 
   if (!res.ok) {
-    throw new Error(data.message || data.error || `Request failed with status ${res.status}`);
+    throw new Error(data.message || data.error || `Gagal dengan status ${res.status}`);
   }
   
   return data;
@@ -61,7 +68,7 @@ export const api = {
     const res = await fetch(`${API_URL}/login`, {
       method: 'POST',
       headers,
-      body: JSON.stringify({ username, password }),
+      body: JSON.stringify({ username: username.trim(), password }),
     });
     const data = await handleResponse(res);
     return data.success ? data.data : null;
@@ -80,11 +87,15 @@ export const api = {
     return await handleResponse(res);
   },
   updateInventory: async (item: InventoryItem) => {
-    const res = await fetch(`${API_URL}/inventory/${encodeURIComponent(item.id)}`, { method: 'PUT', headers, body: JSON.stringify(item) });
+    const res = await fetch(`${API_URL}/inventory/${encodeURIComponent(String(item.id).trim())}`, { 
+      method: 'PUT', 
+      headers, 
+      body: JSON.stringify(item) 
+    });
     return await handleResponse(res);
   },
   deleteInventory: async (id: string) => {
-    const res = await fetch(`${API_URL}/inventory/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    const res = await fetch(`${API_URL}/inventory/${encodeURIComponent(String(id).trim())}`, { method: 'DELETE' });
     return await handleResponse(res);
   },
   deleteInventoryBulk: async (ids: string[]) => {
@@ -108,11 +119,15 @@ export const api = {
     return await handleResponse(res);
   },
   updateTransaction: async (tx: Transaction) => {
-    const res = await fetch(`${API_URL}/transactions/${encodeURIComponent(tx.id)}`, { method: 'PUT', headers, body: JSON.stringify(tx) });
+    const res = await fetch(`${API_URL}/transactions/${encodeURIComponent(String(tx.id).trim())}`, { 
+      method: 'PUT', 
+      headers, 
+      body: JSON.stringify(tx) 
+    });
     return await handleResponse(res);
   },
   deleteTransaction: async (id: string) => {
-    const res = await fetch(`${API_URL}/transactions/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    const res = await fetch(`${API_URL}/transactions/${encodeURIComponent(String(id).trim())}`, { method: 'DELETE' });
     return await handleResponse(res);
   },
 
@@ -128,11 +143,15 @@ export const api = {
     return await handleResponse(res);
   },
   updateUser: async (user: User) => {
-    const res = await fetch(`${API_URL}/users/${encodeURIComponent(user.id)}`, { method: 'PUT', headers, body: JSON.stringify(user) });
+    const res = await fetch(`${API_URL}/users/${encodeURIComponent(String(user.id).trim())}`, { 
+      method: 'PUT', 
+      headers, 
+      body: JSON.stringify(user) 
+    });
     return await handleResponse(res);
   },
   deleteUser: async (id: string) => {
-    const res = await fetch(`${API_URL}/users/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    const res = await fetch(`${API_URL}/users/${encodeURIComponent(String(id).trim())}`, { method: 'DELETE' });
     return await handleResponse(res);
   },
 
@@ -148,8 +167,10 @@ export const api = {
     return await handleResponse(res);
   },
   updateRejectMaster: async (item: RejectItem) => {
-    // FIX: URL Encoding ID untuk mencegah kegagalan proxy gateway
-    const res = await fetch(`${API_URL}/reject/master/${encodeURIComponent(item.id)}`, { 
+    // SECURITY FIX: Explicitly encode ID to handle characters like ':' or '/' 
+    // and trim whitespaces that often cause proxy failures.
+    const cleanId = encodeURIComponent(String(item.id).trim());
+    const res = await fetch(`${API_URL}/reject/master/${cleanId}`, { 
       method: 'PUT', 
       headers, 
       body: JSON.stringify(item) 
@@ -157,7 +178,8 @@ export const api = {
     return await handleResponse(res);
   },
   deleteRejectMaster: async (id: string) => {
-    const res = await fetch(`${API_URL}/reject/master/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    const cleanId = encodeURIComponent(String(id).trim());
+    const res = await fetch(`${API_URL}/reject/master/${cleanId}`, { method: 'DELETE' });
     return await handleResponse(res);
   },
   deleteRejectMasterBulk: async (ids: string[]) => {
@@ -194,22 +216,22 @@ export const api = {
     return await handleResponse(res);
   },
   deletePlaylist: async (id: string) => {
-    const res = await fetch(`${API_URL}/playlists/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    const res = await fetch(`${API_URL}/playlists/${encodeURIComponent(String(id).trim())}`, { method: 'DELETE' });
     return await handleResponse(res);
   },
   getPlaylistItems: async (playlistId: string): Promise<PlaylistItem[]> => {
     try {
-      const res = await fetch(`${API_URL}/playlists/${encodeURIComponent(playlistId)}/items`);
+      const res = await fetch(`${API_URL}/playlists/${encodeURIComponent(String(playlistId).trim())}/items`);
       const data = await handleResponse(res);
       return Array.isArray(data) ? data : (data.data || []);
     } catch (e) { return []; }
   },
   addPlaylistItem: async (playlistId: string, item: Partial<PlaylistItem>) => {
-    const res = await fetch(`${API_URL}/playlists/${encodeURIComponent(playlistId)}/items`, { method: 'POST', headers, body: JSON.stringify(item) });
+    const res = await fetch(`${API_URL}/playlists/${encodeURIComponent(String(playlistId).trim())}/items`, { method: 'POST', headers, body: JSON.stringify(item) });
     return await handleResponse(res);
   },
   deletePlaylistItem: async (itemId: string) => {
-    const res = await fetch(`${API_URL}/playlists/items/${encodeURIComponent(itemId)}`, { method: 'DELETE' });
+    const res = await fetch(`${API_URL}/playlists/items/${encodeURIComponent(String(itemId).trim())}`, { method: 'DELETE' });
     return await handleResponse(res);
   },
 
