@@ -106,6 +106,11 @@ const App: React.FC = () => {
 
   const handleEditFromHistory = (t: Transaction) => { setEditingTransaction(t); setCurrentView(t.type === 'IN' ? View.IN_TRANSACTION : View.OUT_TRANSACTION); };
 
+  // Fix: Return Login component if user is not authenticated
+  if (!isAuthenticated) {
+    return <Login onLogin={handleLogin} />;
+  }
+
   return (
     <div className={`flex h-screen bg-slate-50 dark:bg-slate-950 overflow-hidden relative transition-colors duration-300 ${isDarkMode ? 'dark' : ''}`}>
       <MediaPlayer isOpen={isMediaPlayerOpen} onClose={() => setIsMediaPlayerOpen(false)} onPlayingChange={setIsMediaPlaying} />
@@ -176,7 +181,8 @@ const App: React.FC = () => {
             {currentView === View.REPORTS && <ReportModule items={items} transactions={transactions} />}
             {currentView === View.ADMIN && currentUser && <AdminView user={currentUser} items={items} transactions={transactions} />}
             {currentView === View.REJECT_MASTER && <RejectMasterData items={rejectItems} onAddItem={handleAddRejectItem} onUpdateItem={handleUpdateRejectItem} onDeleteItem={handleDeleteRejectItem} />}
-            {currentView === View.REJECT_TRANSACTION && <RejectTransactionModule masterItems={rejectItems} onAddItem={handleAddRejectItem} onSaveTransaction={handleSaveRejectTransaction} />}
+            {/* Fix: Removed unused onAddItem prop from RejectTransactionModule to fix type mismatch error */}
+            {currentView === View.REJECT_TRANSACTION && <RejectTransactionModule masterItems={rejectItems} onSaveTransaction={handleSaveRejectTransaction} />}
             {currentView === View.REJECT_HISTORY && <RejectHistory transactions={rejectTransactions} masterItems={rejectItems} onDeleteTransaction={handleDeleteRejectTransaction} />}
           </div>
         </div>
