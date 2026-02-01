@@ -10,7 +10,6 @@ const app = express();
 const PORT = process.env.PORT || 3010;
 
 // --- 1. ENHANCED CORS & BODY PARSING ---
-// Senior Fix: Explicitly handle OPTIONS for all routes to prevent 502 on preflight
 app.use(cors({ 
     origin: '*', 
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'], 
@@ -21,7 +20,7 @@ app.use(cors({
 app.use(bodyParser.json({ limit: '100mb' }));
 app.use(bodyParser.urlencoded({ limit: '100mb', extended: true }));
 
-// Request Logger for Production Debugging
+// Request Logger
 app.use((req, res, next) => {
     console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
     next();
@@ -34,7 +33,7 @@ const pool = mysql.createPool({
     password: process.env.DB_PASSWORD,
     database: process.env.DB_NAME,
     waitForConnections: true,
-    connectionLimit: 20, // Increased for concurrent tasks
+    connectionLimit: 20,
     queueLimit: 0,
     charset: 'utf8mb4'
 });
@@ -46,8 +45,15 @@ const toCamel = (o) => {
     Object.keys(o).forEach(key => {
         const newKey = key.replace(/_([a-z])/g, (g) => g[1].toUpperCase());
         let value = o[key];
+        
+        // CRITICAL FIX: Ensure JSON fields are ALWAYS arrays to prevent crashes during iteration
         if (['conversions', 'items', 'photos'].includes(newKey) || ['conversions', 'items', 'photos'].includes(key)) {
-            try { value = typeof value === 'string' ? JSON.parse(value) : value; } catch (e) { value = []; }
+            try { 
+                value = typeof value === 'string' ? JSON.parse(value) : value; 
+                if (!Array.isArray(value)) value = [];
+            } catch (e) { 
+                value = []; 
+            }
         }
         newO[newKey] = value;
     });
@@ -158,7 +164,7 @@ app.delete('/api/inventory/:id', async (req, res) => {
     } catch (e) { handleError(res, e); }
 });
 
-// 4. TRANSACTIONS MODULE (CRITICAL PUT FIX)
+// 4. TRANSACTIONS MODULE (FIXED FOR 502 PREVENTION)
 app.get('/api/transactions', async (req, res) => {
     try {
         const [rows] = await pool.query('SELECT * FROM transactions ORDER BY date DESC');
@@ -174,7 +180,7 @@ app.post('/api/transactions', async (req, res) => {
         await conn.query('INSERT INTO transactions (id, type, date, reference_number, supplier, notes, photos, items, performer) VALUES (?,?,?,?,?,?,?,?,?)',
             [tx.id, tx.type, new Date(tx.date), tx.referenceNumber, tx.supplier, tx.notes, JSON.stringify(tx.photos || []), JSON.stringify(tx.items || []), tx.performer]);
 
-        for (const item of tx.items) {
+        for (const item of (tx.items || [])) {
             const sql = tx.type === 'IN' ? 'UPDATE inventory SET stock = stock + ? WHERE id = ?' : 'UPDATE inventory SET stock = stock - ? WHERE id = ?';
             await conn.query(sql, [item.quantity, item.itemId]);
         }
@@ -201,6 +207,7 @@ app.put('/api/transactions/:id', async (req, res) => {
         }
         
         const oldTx = toCamel(oldRows[0]);
+        // oldTx.items is now guaranteed to be an array by toCamel
         for (const item of oldTx.items) {
             const sql = oldTx.type === 'IN' ? 'UPDATE inventory SET stock = stock - ? WHERE id = ?' : 'UPDATE inventory SET stock = stock + ? WHERE id = ?';
             await conn.query(sql, [item.quantity, item.itemId]);
@@ -211,7 +218,7 @@ app.put('/api/transactions/:id', async (req, res) => {
             [tx.type, new Date(tx.date), tx.referenceNumber, tx.supplier, tx.notes, JSON.stringify(tx.photos || []), JSON.stringify(tx.items || []), tx.performer, id]);
 
         // 3. Re-Apply Stock
-        for (const item of tx.items) {
+        for (const item of (tx.items || [])) {
             const sql = tx.type === 'IN' ? 'UPDATE inventory SET stock = stock + ? WHERE id = ?' : 'UPDATE inventory SET stock = stock - ? WHERE id = ?';
             await conn.query(sql, [item.quantity, item.itemId]);
         }
@@ -219,9 +226,11 @@ app.put('/api/transactions/:id', async (req, res) => {
         await conn.commit();
         sendRes(res, 200, true, "Transaksi diperbarui");
     } catch (e) {
-        await conn.rollback();
+        if (conn) await conn.rollback();
         handleError(res, e, "Gagal update transaksi");
-    } finally { conn.release(); }
+    } finally { 
+        if (conn) conn.release(); 
+    }
 });
 
 app.delete('/api/transactions/:id', async (req, res) => {
@@ -264,6 +273,9 @@ app.put('/api/reject/master/:id', async (req, res) => {
     const id = decodeURIComponent(req.params.id).replace(/:/g, '-').trim();
     const i = req.body;
     try {
+        const [existing] = await pool.query('SELECT id FROM reject_master WHERE id = ?', [id]);
+        if (existing.length === 0) return sendRes(res, 404, false, "Master Reject tidak ditemukan");
+        
         await pool.query('UPDATE reject_master SET name=?, sku=?, category=?, base_unit=?, conversions=? WHERE id=?',
             [i.name, i.sku, i.category, i.baseUnit, JSON.stringify(i.conversions || []), id]);
         sendRes(res, 200, true, "Master Reject diperbarui");
@@ -356,7 +368,7 @@ app.post('/api/reports/export', async (req, res) => {
             const [rows] = await pool.query('SELECT * FROM transactions WHERE date BETWEEN ? AND ?', [`${startDate} 00:00:00`, `${endDate} 23:59:59`]);
             const tableData = rows.flatMap(r => {
                 const tx = toCamel(r);
-                return tx.items.map(it => [tx.date.toISOString().split('T')[0], tx.type, it.itemName, it.quantity, it.unit]);
+                return (tx.items || []).map(it => [tx.date.toISOString().split('T')[0], tx.type, it.itemName, it.quantity, it.unit]);
             });
             await doc.table({
                 headers: ['Tanggal', 'Tipe', 'Nama Barang', 'Qty', 'Unit'],
@@ -389,5 +401,5 @@ app.post('/api/system/reset', async (req, res) => {
 
 // START SERVER
 app.listen(PORT, '0.0.0.0', () => {
-    console.log(`SmartInventory All-in-One Backend v1.2.5 (Production Optimized) is running on PORT ${PORT}`);
+    console.log(`SmartInventory All-in-One Backend v1.2.6 (Auto-Fix Active) is running on PORT ${PORT}`);
 });
