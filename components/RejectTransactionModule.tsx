@@ -1,7 +1,7 @@
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { RejectItem, RejectTransaction, RejectTransactionItem } from '../types';
-import { Search, Plus, Trash2, Save, ShoppingCart, Calendar, CheckCircle, Download, FileSpreadsheet } from 'lucide-react';
+import { Search, Plus, Trash2, Save, ShoppingCart, Calendar, CheckCircle, Download, FileSpreadsheet, ChevronRight, TrendingDown, Zap } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
 interface RejectTransactionModuleProps {
@@ -21,31 +21,54 @@ export const RejectTransactionModule: React.FC<RejectTransactionModuleProps> = (
   const [inputUnit, setInputUnit] = useState('');
   const [reason, setReason] = useState('');
   const [showDropdown, setShowDropdown] = useState(false);
-  const [highlightedIndex, setHighlightedIndex] = useState(0);
+  const [highlightedIndex, setHighlightedIndex] = useState(-1);
 
   const searchInputRef = useRef<HTMLInputElement>(null);
   const qtyInputRef = useRef<HTMLInputElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const reasonInputRef = useRef<HTMLTextAreaElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
-  // Fuzzy-ish Search
-  const filteredItems = masterItems.filter(item => 
-    item.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-    item.sku.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  // Fuzzy Search
+  const filteredItems = useMemo(() => {
+    if (!searchQuery || selectedItem) return [];
+    const query = searchQuery.toLowerCase();
+    return masterItems.filter(item => 
+      item.name.toLowerCase().includes(query) || 
+      item.sku.toLowerCase().includes(query)
+    ).slice(0, 8);
+  }, [masterItems, searchQuery, selectedItem]);
+
+  // Click Outside logic for dropdown
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+        if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+            setShowDropdown(false);
+        }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const handleSelectItem = (item: RejectItem) => {
     setSelectedItem(item);
     setSearchQuery(item.name);
-    setInputUnit(item.baseUnit); // Default to base
+    
+    // --- SMART UNIT MEMORY (LOGIKA USER) ---
+    const savedUnit = localStorage.getItem(`reject_unit_pref_${item.id}`);
+    const availableUnits = [item.baseUnit, ...(item.conversions || []).map(c => c.name)];
+    if (savedUnit && availableUnits.includes(savedUnit)) {
+        setInputUnit(savedUnit);
+    } else {
+        setInputUnit(item.baseUnit);
+    }
+
     setShowDropdown(false);
+    setHighlightedIndex(-1);
     setTimeout(() => qtyInputRef.current?.focus(), 100);
   };
 
   const handleAddToCart = () => {
-    if (!selectedItem || !inputQty || !reason) {
-        alert("Mohon lengkapi item, qty, dan alasan.");
-        return;
-    }
+    if (!selectedItem || !inputQty || !reason) return;
 
     const qty = parseFloat(inputQty);
     if (isNaN(qty) || qty <= 0) return;
@@ -61,13 +84,16 @@ export const RejectTransactionModule: React.FC<RejectTransactionModuleProps> = (
         itemId: selectedItem.id,
         itemName: selectedItem.name,
         sku: selectedItem.sku,
-        quantity: finalQty, // Stored in Base Unit
-        inputQuantity: qty, // Display purposes
+        quantity: parseFloat(finalQty.toFixed(6)), 
+        inputQuantity: qty,
         inputUnit: inputUnit,
         reason: reason
     };
 
-    setCart([...cart, newItem]);
+    // Save Preference
+    localStorage.setItem(`reject_unit_pref_${selectedItem.id}`, inputUnit);
+
+    setCart([newItem, ...cart]);
     
     // Reset inputs
     setSelectedItem(null);
@@ -76,223 +102,120 @@ export const RejectTransactionModule: React.FC<RejectTransactionModuleProps> = (
     setReason('');
     setInputUnit('');
     
-    // Focus back to search
     setTimeout(() => searchInputRef.current?.focus(), 50);
   };
 
-  const handleRemoveFromCart = (index: number) => {
-    const newCart = [...cart];
-    newCart.splice(index, 1);
-    setCart(newCart);
-  };
-
   const handleKeyDownSearch = (e: React.KeyboardEvent) => {
+    if (!showDropdown || filteredItems.length === 0) return;
     if (e.key === 'ArrowDown') {
       e.preventDefault();
-      setHighlightedIndex(prev => (prev < filteredItems.length - 1 ? prev + 1 : prev));
+      setHighlightedIndex(prev => (prev < filteredItems.length - 1 ? prev + 1 : 0));
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
-      setHighlightedIndex(prev => (prev > 0 ? prev - 1 : 0));
+      setHighlightedIndex(prev => (prev > 0 ? prev - 1 : filteredItems.length - 1));
     } else if (e.key === 'Enter') {
       e.preventDefault();
-      if (showDropdown && filteredItems[highlightedIndex]) {
-        handleSelectItem(filteredItems[highlightedIndex]);
-      }
+      if (highlightedIndex >= 0) handleSelectItem(filteredItems[highlightedIndex]);
+      else handleSelectItem(filteredItems[0]);
+    } else if (e.key === 'Escape') {
+      setShowDropdown(false);
     }
   };
 
-  const handleKeyDownReason = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-        e.preventDefault();
-        handleAddToCart();
-    }
-  }
-
-  // -- XLSX Template --
-  const handleDownloadTemplate = () => {
-      const headers = ["SKU", "Nama Barang", "Qty", "Satuan", "Alasan"];
-      const sample = ["REJ-001", "Barang Rusak", 5.5, "pcs", "Rusak pengiriman"];
-      const ws = XLSX.utils.aoa_to_sheet([headers, sample]);
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, "Template Reject");
-      XLSX.writeFile(wb, "template_reject.xlsx");
-  }
-
-  // -- XLSX Import (Auto Create) --
-  const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (evt) => {
-      const data = evt.target?.result;
-      if (!data) return;
-
-      const workbook = XLSX.read(data, { type: 'array' });
-      const sheet = workbook.Sheets[workbook.SheetNames[0]];
-      const jsonData: any[][] = XLSX.utils.sheet_to_json(sheet, { header: 1 });
-
-      const newItems: RejectTransactionItem[] = [];
-      let autoCreatedCount = 0;
-
-      for (let i = 1; i < jsonData.length; i++) {
-        const row = jsonData[i];
-        if (!row || row.length < 3) continue;
-
-        const sku = String(row[0]).trim();
-        const name = String(row[1]).trim();
-        const qty = parseFloat(String(row[2]));
-        const unit = row[3] ? String(row[3]).trim() : 'pcs';
-        const reasonStr = row[4] ? String(row[4]).trim() : '-';
-
-        if (!sku || isNaN(qty) || qty <= 0) continue;
-
-        let matched = masterItems.find(m => m.sku.toLowerCase() === sku.toLowerCase());
-
-        // AUTO CREATE REJECT MASTER
-        if (!matched) {
-            const newMaster: RejectItem = {
-                id: `REJ-AUTO-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-                name: name || `New Reject Item (${sku})`,
-                sku: sku,
-                category: 'Uncategorized',
-                baseUnit: unit
-            };
-            onAddItem(newMaster);
-            matched = newMaster;
-            autoCreatedCount++;
-        }
-
-        newItems.push({
-            itemId: matched.id,
-            itemName: matched.name,
-            sku: matched.sku,
-            quantity: qty, 
-            inputQuantity: qty,
-            inputUnit: unit,
-            reason: reasonStr
-        });
-      }
-
-      if (newItems.length > 0) {
-          setCart([...cart, ...newItems]);
-          alert(`Berhasil import ${newItems.length} item. (${autoCreatedCount} master reject baru dibuat)`);
-      } else {
-          alert("Tidak ada data valid.");
-      }
-      if (fileInputRef.current) fileInputRef.current.value = '';
-    };
-    reader.readAsArrayBuffer(file);
-  }
+  // Visual Impact Calculation
+  const impactText = useMemo(() => {
+    if (!selectedItem || !inputQty) return null;
+    let ratio = 1;
+    const conv = selectedItem.conversions?.find(c => c.name === inputUnit);
+    if (conv) ratio = conv.factor;
+    const val = parseFloat(inputQty) * ratio;
+    return `${val.toFixed(3)} ${selectedItem.baseUnit}`;
+  }, [selectedItem, inputQty, inputUnit]);
 
   const handleSave = () => {
-    if (cart.length === 0) {
-        alert("Keranjang kosong.");
-        return;
-    }
-
+    if (cart.length === 0) return;
     const tx: RejectTransaction = {
         id: `TX-REJ-${Date.now()}`, 
         date: new Date(date).toISOString(),
         items: cart,
         createdAt: new Date().toISOString()
     };
-
     onSaveTransaction(tx);
     setCart([]);
-    setReason('');
     alert("Transaksi Reject Berhasil Disimpan!");
   };
 
   return (
-    <div className="space-y-6 animate-fade-in">
-        <div className="flex justify-between items-center">
-            <h2 className="text-2xl font-bold text-red-600 flex items-center gap-2">
-                <ShoppingCart /> Transaksi Reject
+    <div className="space-y-6 animate-fade-in pb-10">
+        <div className="flex justify-between items-center bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-100 dark:border-slate-800 shadow-sm">
+            <h2 className="text-xl font-bold text-red-600 flex items-center gap-2 uppercase tracking-tighter">
+                <Zap fill="currentColor"/> Input Transaksi Reject
             </h2>
-            <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-lg border border-slate-200">
+            <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-800 px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700">
                 <Calendar size={16} className="text-slate-500"/>
-                <input 
-                    type="date" 
-                    value={date} 
-                    onChange={e => setDate(e.target.value)}
-                    className="outline-none text-sm text-slate-700"
-                />
+                <input type="date" value={date} onChange={e => setDate(e.target.value)} className="bg-transparent outline-none text-sm font-bold text-slate-700 dark:text-slate-200" />
             </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* INPUT FORM */}
-            <div className="lg:col-span-1 bg-white p-6 rounded-xl shadow-sm border border-slate-100 h-fit">
-                <h3 className="font-semibold text-slate-800 mb-4">Input Barang Reject</h3>
+        <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
+            {/* INPUT FORM (KIRI) */}
+            <div className="xl:col-span-5 bg-white dark:bg-slate-900 p-8 rounded-[2rem] shadow-sm border border-slate-100 dark:border-slate-800 h-fit space-y-6">
+                <h3 className="text-xs font-black text-slate-400 uppercase tracking-[0.4em] mb-4">I. Detail Pencatatan</h3>
                 
-                <div className="space-y-4">
-                    {/* Search / Autocomplete */}
-                    <div className="relative">
-                        <label className="text-xs font-semibold text-slate-500 mb-1 block">Cari Barang</label>
+                <div className="space-y-5">
+                    {/* Search Autocomplete */}
+                    <div className="relative" ref={dropdownRef}>
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block ml-2 mb-2">Cari Barang (SKU/Nama)</label>
                         <div className="relative">
-                            <Search className="absolute left-3 top-2.5 text-slate-400" size={16}/>
+                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={20}/>
                             <input 
                                 ref={searchInputRef}
                                 type="text"
-                                placeholder="Ketik nama / SKU..."
-                                className="w-full pl-9 pr-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-red-200 outline-none"
+                                placeholder="Ketik atau scan SKU..."
+                                className={`w-full pl-12 pr-4 py-4 rounded-2xl border-2 transition-all outline-none text-lg font-bold ${selectedItem ? 'border-red-500 bg-red-50/50 dark:bg-red-900/10 text-red-600' : 'border-slate-100 dark:border-slate-800 dark:bg-slate-950 dark:text-white focus:border-red-400'}`}
                                 value={searchQuery}
-                                onChange={e => {
-                                    setSearchQuery(e.target.value);
-                                    setShowDropdown(true);
-                                    setSelectedItem(null);
-                                }}
-                                onKeyDown={handleKeyDownSearch}
+                                onChange={e => { setSearchQuery(e.target.value); setSelectedItem(null); setShowDropdown(true); setHighlightedIndex(-1); }}
                                 onFocus={() => setShowDropdown(true)}
+                                onKeyDown={handleKeyDownSearch}
                             />
                         </div>
-                        {showDropdown && searchQuery && !selectedItem && (
-                            <div className="absolute z-10 w-full bg-white border border-slate-200 rounded-lg shadow-lg mt-1 max-h-40 overflow-y-auto">
-                                {filteredItems.map((item, idx) => (
+                        {showDropdown && filteredItems.length > 0 && (
+                            <div className="absolute z-30 w-full bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-2xl shadow-2xl mt-2 overflow-hidden p-1">
+                                {filteredItems.map((m, idx) => (
                                     <div 
-                                        key={item.id} 
-                                        onClick={() => handleSelectItem(item)}
-                                        className={`p-2 hover:bg-slate-50 cursor-pointer text-sm border-b border-slate-50 last:border-0 ${idx === highlightedIndex ? 'bg-blue-50' : ''}`}
+                                        key={m.id} 
+                                        onClick={() => handleSelectItem(m)}
+                                        className={`p-4 cursor-pointer rounded-xl flex justify-between items-center transition-all ${highlightedIndex === idx ? 'bg-red-500 text-white shadow-lg' : 'hover:bg-slate-50 dark:hover:bg-slate-700'}`}
                                     >
-                                        <div className="font-medium text-slate-800">{item.name}</div>
-                                        <div className="text-xs text-slate-500">{item.sku}</div>
+                                        <div>
+                                            <div className="text-sm font-black uppercase tracking-tight">{m.name}</div>
+                                            <div className={`text-[10px] font-mono ${highlightedIndex === idx ? 'text-white/70' : 'text-slate-400'}`}>{m.sku}</div>
+                                        </div>
+                                        <ChevronRight size={18} />
                                     </div>
                                 ))}
                             </div>
                         )}
-                        {selectedItem && (
-                            <div className="mt-1 flex items-center gap-1 text-xs text-green-600">
-                                <CheckCircle size={12} /> Barang terpilih: {selectedItem.name} ({selectedItem.baseUnit})
-                            </div>
-                        )}
                     </div>
 
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-2 gap-4">
                          <div>
-                            <label className="text-xs font-semibold text-slate-500 mb-1 block">Jumlah (Qty)</label>
+                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block ml-2 mb-2">Jumlah</label>
                             <input 
                                 ref={qtyInputRef}
-                                type="number"
-                                step="any" 
-                                placeholder="0.0"
-                                className="w-full px-3 py-2 border rounded-lg text-sm outline-none font-bold"
+                                type="text"
+                                inputMode="decimal"
+                                placeholder="0"
+                                className="w-full px-5 py-4 border-2 border-slate-100 dark:border-slate-800 dark:bg-slate-950 dark:text-white rounded-2xl outline-none focus:border-red-400 font-black text-2xl text-center"
                                 value={inputQty}
-                                onChange={e => setInputQty(e.target.value)}
-                                // On Enter in Qty, focus Reason
-                                onKeyDown={(e) => {
-                                    if(e.key === 'Enter') {
-                                        e.preventDefault();
-                                        const reasonEl = document.getElementById('reason-input');
-                                        reasonEl?.focus();
-                                    }
-                                }}
+                                onChange={e => setInputQty(e.target.value.replace(/[^0-9.]/g, ''))}
+                                onKeyDown={e => e.key === 'Enter' && reasonInputRef.current?.focus()}
                             />
                          </div>
                          <div>
-                            <label className="text-xs font-semibold text-slate-500 mb-1 block">Satuan</label>
+                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block ml-2 mb-2">Satuan</label>
                             <select 
-                                className="w-full px-3 py-2 border rounded-lg text-sm outline-none bg-white"
+                                className="w-full px-5 py-4 border-2 border-slate-100 dark:border-slate-800 dark:bg-slate-950 dark:text-white rounded-2xl font-black outline-none appearance-none cursor-pointer text-center bg-white"
                                 value={inputUnit}
                                 onChange={e => setInputUnit(e.target.value)}
                                 disabled={!selectedItem}
@@ -310,95 +233,94 @@ export const RejectTransactionModule: React.FC<RejectTransactionModuleProps> = (
                     </div>
 
                     <div>
-                        <label className="text-xs font-semibold text-slate-500 mb-1 block">Alasan Reject</label>
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block ml-2 mb-2">Alasan Reject</label>
                         <textarea 
-                            id="reason-input"
+                            ref={reasonInputRef}
                             rows={2}
-                            placeholder="Contoh: Rusak, Kadaluarsa, Kemasan Sobek..."
-                            className="w-full px-3 py-2 border rounded-lg text-sm outline-none resize-none"
+                            placeholder="Contoh: Pecah, Expired, Rusak Distributor..."
+                            className="w-full px-5 py-4 border-2 border-slate-100 dark:border-slate-800 dark:bg-slate-950 dark:text-white rounded-2xl outline-none focus:border-red-400 font-bold text-sm resize-none"
                             value={reason}
                             onChange={e => setReason(e.target.value)}
-                            onKeyDown={handleKeyDownReason}
+                            onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), handleAddToCart())}
                         />
                     </div>
 
+                    {/* Impact Calculator Visual */}
+                    {impactText && (
+                        <div className="flex items-center gap-4 p-5 bg-red-50 dark:bg-red-900/10 rounded-2xl border border-red-100 dark:border-red-900/20 animate-in slide-in-from-top-2">
+                            <TrendingDown size={24} className="text-red-500" />
+                            <div>
+                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-0.5">Impact Stok Dasar</p>
+                                <div className="text-xl font-black text-red-600 uppercase tracking-tighter">{impactText}</div>
+                            </div>
+                        </div>
+                    )}
+
                     <button 
                         onClick={handleAddToCart}
-                        disabled={!selectedItem}
-                        className={`w-full py-2 rounded-lg font-medium text-white transition-colors flex justify-center items-center gap-2 ${selectedItem ? 'bg-red-600 hover:bg-red-700' : 'bg-slate-300 cursor-not-allowed'}`}
+                        disabled={!selectedItem || !inputQty || !reason}
+                        className="w-full py-5 bg-red-500 hover:bg-red-600 text-white rounded-[1.5rem] font-black shadow-xl shadow-red-500/20 transition-all active:scale-[0.98] disabled:opacity-30 uppercase tracking-[0.2em] text-xs flex items-center justify-center gap-3"
                     >
-                        <Plus size={16} /> Tambah ke Keranjang
+                        <Plus size={20} strokeWidth={3}/> Tambah Ke Keranjang (Enter)
                     </button>
                 </div>
             </div>
 
-            {/* CART LIST */}
-            <div className="lg:col-span-2 bg-white rounded-xl shadow-sm border border-slate-100 flex flex-col h-full">
-                <div className="p-4 border-b border-slate-100 bg-slate-50 rounded-t-xl flex justify-between items-center">
-                    <h3 className="font-semibold text-slate-700">Daftar Item (Keranjang)</h3>
-                    <div className="flex gap-2">
-                       <button onClick={handleDownloadTemplate} className="text-xs flex items-center gap-1 bg-white text-slate-600 border border-slate-300 px-3 py-1.5 rounded-lg hover:bg-slate-50">
-                         <Download size={14}/> Template
-                       </button>
-                       <button onClick={() => fileInputRef.current?.click()} className="text-xs flex items-center gap-1 bg-green-50 text-green-700 px-3 py-1.5 rounded-lg border border-green-200 hover:bg-green-100">
-                          <FileSpreadsheet size={14}/> Import (XLSX)
-                       </button>
-                       <input ref={fileInputRef} type="file" accept=".xlsx" className="hidden" onChange={handleImport} />
-                    </div>
+            {/* CART LIST (KANAN) */}
+            <div className="xl:col-span-7 bg-white dark:bg-slate-900 rounded-[2rem] shadow-sm border border-slate-100 dark:border-slate-800 flex flex-col h-full overflow-hidden">
+                <div className="p-6 border-b border-slate-50 dark:border-slate-800 flex justify-between items-center bg-slate-50/50 dark:bg-slate-900/50">
+                    <h3 className="text-xs font-black text-slate-800 dark:text-white uppercase tracking-[0.4em] flex items-center gap-3">
+                        <ShoppingCart size={18}/> Keranjang Tunggu Konfirmasi
+                    </h3>
+                    <span className="bg-red-500 text-white px-3 py-1 rounded-full text-[10px] font-black">{cart.length} ITEM</span>
                 </div>
                 
-                <div className="flex-1 overflow-auto p-0">
-                    <table className="w-full text-left text-sm text-slate-600">
-                        <thead className="bg-white border-b border-slate-100 text-xs text-slate-500 uppercase">
+                <div className="flex-1 overflow-auto max-h-[500px]">
+                    <table className="w-full text-left text-sm">
+                        <thead className="bg-white dark:bg-slate-950 border-b border-slate-50 dark:border-slate-800 text-[10px] font-black text-slate-500 uppercase tracking-widest sticky top-0 z-10">
                             <tr>
-                                <th className="px-4 py-3">Barang</th>
-                                <th className="px-4 py-3">Input</th>
-                                <th className="px-4 py-3">Tersimpan (Base)</th>
-                                <th className="px-4 py-3">Alasan</th>
-                                <th className="px-4 py-3 text-right">Aksi</th>
+                                <th className="px-6 py-4">Barang & SKU</th>
+                                <th className="px-6 py-4">Input</th>
+                                <th className="px-6 py-4">Konversi Base</th>
+                                <th className="px-6 py-4 text-right">Aksi</th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-slate-50">
+                        <tbody className="divide-y divide-slate-50 dark:divide-slate-800">
                             {cart.map((item, idx) => (
-                                <tr key={idx} className="hover:bg-slate-50">
-                                    <td className="px-4 py-3">
-                                        <div className="font-medium text-slate-800">{item.itemName}</div>
-                                        <div className="text-xs text-slate-400 font-mono">{item.sku}</div>
+                                <tr key={idx} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-colors">
+                                    <td className="px-6 py-4">
+                                        <div className="text-sm font-black text-slate-800 dark:text-white uppercase tracking-tight">{item.itemName}</div>
+                                        <div className="text-[10px] font-mono text-slate-400">{item.sku}</div>
                                     </td>
-                                    <td className="px-4 py-3 font-medium text-slate-700">
-                                        {Number(item.inputQuantity).toLocaleString('id-ID')} {item.inputUnit}
+                                    <td className="px-6 py-4">
+                                        <span className="text-sm font-black text-red-600">{item.inputQuantity} {item.inputUnit}</span>
                                     </td>
-                                    <td className="px-4 py-3 text-slate-500 text-xs">
-                                        {parseFloat(item.quantity.toFixed(3))} {masterItems.find(m => m.id === item.itemId)?.baseUnit}
+                                    <td className="px-6 py-4">
+                                        <span className="text-xs font-bold text-blue-600 dark:text-blue-400">{item.quantity} {masterItems.find(m => m.id === item.itemId)?.baseUnit}</span>
                                     </td>
-                                    <td className="px-4 py-3 text-xs italic max-w-[150px] truncate">{item.reason}</td>
-                                    <td className="px-4 py-3 text-right">
-                                        <button onClick={() => handleRemoveFromCart(idx)} className="text-red-500 hover:text-red-700 p-1">
-                                            <Trash2 size={16} />
+                                    <td className="px-6 py-4 text-right">
+                                        <button onClick={() => {
+                                            const next = [...cart]; next.splice(idx, 1); setCart(next);
+                                        }} className="p-2.5 text-slate-200 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-all">
+                                            <Trash2 size={18} />
                                         </button>
                                     </td>
                                 </tr>
                             ))}
                             {cart.length === 0 && (
-                                <tr>
-                                    <td colSpan={5} className="px-4 py-12 text-center text-slate-400">
-                                        Keranjang masih kosong.
-                                    </td>
-                                </tr>
+                                <tr><td colSpan={4} className="p-24 text-center text-slate-400 text-xs italic">Keranjang masih kosong. Pilih barang di sebelah kiri.</td></tr>
                             )}
                         </tbody>
                     </table>
                 </div>
 
-                <div className="p-4 border-t border-slate-100">
+                <div className="p-6 bg-slate-50 dark:bg-slate-800/50 border-t border-slate-100 dark:border-slate-800">
                     <button 
                         onClick={handleSave}
                         disabled={cart.length === 0}
-                        className={`w-full py-3 rounded-xl font-bold text-white shadow-lg transition-all ${cart.length > 0 ? 'bg-slate-800 hover:bg-slate-900 transform hover:scale-[1.01]' : 'bg-slate-300 cursor-not-allowed'}`}
+                        className={`w-full py-4 rounded-2xl font-black text-white shadow-2xl transition-all flex justify-center items-center gap-3 uppercase tracking-[0.3em] text-[11px] ${cart.length > 0 ? 'bg-slate-900 hover:bg-black shadow-slate-900/20 active:scale-[0.99]' : 'bg-slate-300 cursor-not-allowed'}`}
                     >
-                        <div className="flex justify-center items-center gap-2">
-                            <Save size={20} /> Simpan Transaksi Reject
-                        </div>
+                        <Save size={18} /> Finalisasi & Simpan Semua Log
                     </button>
                 </div>
             </div>
