@@ -148,82 +148,73 @@ const App: React.FC = () => {
 
   const handleAddItem = async (item: InventoryItem) => {
     await api.addInventory(item);
-    refreshData(); 
+    await refreshData(); 
   };
 
   const handleUpdateItem = async (updatedItem: InventoryItem) => {
     await api.updateInventory(updatedItem);
-    refreshData();
+    await refreshData();
   };
 
   const handleDeleteItem = async (id: string) => {
-    if (confirm('Are you sure you want to delete this item?')) {
-      await api.deleteInventory(id);
-      refreshData();
-    }
+    // Audit: Confirmation removed here because it's handled in the UI Component (InventoryModule)
+    await api.deleteInventory(id);
+    await refreshData();
   };
 
   const handleBulkDeleteItems = async (ids: string[]) => {
       try {
           await api.deleteInventoryBulk(ids);
-          refreshData();
+          await refreshData();
       } catch (err) {
           console.error("Bulk delete failed", err);
-          alert("Gagal menghapus beberapa item sekaligus.");
+          throw err;
       }
   };
 
   // --- Reject Handlers ---
   const handleAddRejectItem = async (item: RejectItem) => {
     await api.addRejectMaster(item);
-    refreshData();
+    await refreshData();
   };
   const handleUpdateRejectItem = async (item: RejectItem) => {
     await api.updateRejectMaster(item);
-    refreshData();
+    await refreshData();
   };
   const handleDeleteRejectItem = async (id: string) => {
-      if(confirm('Hapus master barang reject ini?')) {
-        await api.deleteRejectMaster(id);
-        refreshData();
-      }
+    await api.deleteRejectMaster(id);
+    await refreshData();
   };
   const handleBulkDeleteRejectMaster = async (ids: string[]) => {
       try {
           await api.deleteRejectMasterBulk(ids);
-          refreshData();
+          await refreshData();
       } catch (err) {
           console.error("Bulk delete reject failed", err);
-          alert("Gagal menghapus beberapa master reject.");
+          throw err;
       }
   };
   const handleSaveRejectTransaction = async (tx: RejectTransaction) => {
       await api.addRejectTransaction(tx);
-      refreshData();
+      await refreshData();
   };
 
   // Transaction Handlers
   const handleSaveTransaction = async (newTransaction: Transaction) => {
     await api.addTransaction(newTransaction);
-    refreshData();
+    await refreshData();
   };
 
   const handleUpdateTransaction = async (updatedTransaction: Transaction) => {
     await api.updateTransaction(updatedTransaction);
     setEditingTransaction(null);
-    refreshData();
+    await refreshData();
   };
 
   const handleDeleteTransaction = async (id: string) => {
-    if (confirm('Apakah Anda yakin ingin menghapus transaksi ini? Stok barang akan dikembalikan otomatis sesuai jenis transaksi.')) {
-      try {
-        await api.deleteTransaction(id);
-        refreshData();
-      } catch (err: any) {
-        console.error("Gagal menghapus transaksi", err);
-        alert(`Terjadi kesalahan saat menghapus transaksi: ${err.message}`);
-      }
-    }
+    // Audit: Logic confirmed - server/index.js correctly handles stock reversal on transaction delete
+    await api.deleteTransaction(id);
+    await refreshData();
   };
 
   const handleEditFromHistory = (t: Transaction) => {
@@ -395,7 +386,6 @@ const App: React.FC = () => {
                               </div>
                               <div className="text-right">
                                  <div className="text-sm font-bold text-slate-700 dark:text-slate-300">
-                                   {/* Fixed: Remove decimal .000 by forcing Number cast and locale string */}
                                    {Number(item.stock).toLocaleString('id-ID')} {item.unit}
                                  </div>
                                  <div className="text-[10px] text-slate-400">Saldo Akhir</div>
@@ -503,7 +493,6 @@ const App: React.FC = () => {
                                   <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">{item.sku}</p>
                                   <div className="flex items-center gap-2 mt-2">
                                      <span className="text-xs bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 px-2 py-0.5 rounded border border-red-100 dark:border-red-900 font-medium">
-                                        {/* Fixed: Format stock number in notification */}
                                         Stok: {Number(item.stock).toLocaleString('id-ID')} {item.unit}
                                      </span>
                                      <span className="text-[10px] text-slate-400">

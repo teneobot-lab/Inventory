@@ -50,12 +50,10 @@ const handleError = (res, err, customMsg = "Internal Server Error") => {
 
 // --- 1. SYSTEM & HEALTH ---
 app.get('/api/health', async (req, res) => {
-    console.log(`[${new Date().toISOString()}] Health check requested from ${req.ip}`);
     try {
         const [rows] = await pool.query('SELECT 1 as ok');
         sendRes(res, 200, true, "SmartInventory API Online", { database: rows[0].ok === 1 });
     } catch (e) {
-        console.error("Health check DB Error:", e.message);
         sendRes(res, 500, false, "Database Connection Failed", { database: false, error: e.message });
     }
 });
@@ -114,7 +112,7 @@ app.get('/api/inventory', async (req, res) => {
 app.post('/api/inventory', async (req, res) => {
     const i = req.body;
     try {
-        await pool.query('INSERT INTO inventory (id, name, sku, category, stock, min_stock, unit, conversions, price, last_updated) VALUES (?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE name=VALUES(name), stock=VALUES(stock), price=VALUES(price)', 
+        await pool.query('INSERT INTO inventory (id, name, sku, category, stock, min_stock, unit, conversions, price, last_updated) VALUES (?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE name=VALUES(name), sku=VALUES(sku), category=VALUES(category), min_stock=VALUES(min_stock), unit=VALUES(unit), conversions=VALUES(conversions), price=VALUES(price)', 
             [i.id, i.name, i.sku, i.category, i.stock, i.minStock, i.unit, JSON.stringify(i.conversions || []), i.price, new Date()]);
         sendRes(res, 201, true, "Barang disimpan");
     } catch (e) { handleError(res, e); }
@@ -171,6 +169,41 @@ app.post('/api/transactions', async (req, res) => {
     } finally { conn.release(); }
 });
 
+app.put('/api/transactions/:id', async (req, res) => {
+    const tx = req.body;
+    const conn = await pool.getConnection();
+    try {
+        await conn.beginTransaction();
+        
+        // 1. Dapatkan data lama untuk melakukan reversal stok
+        const [oldRows] = await conn.query('SELECT * FROM transactions WHERE id=?', [req.params.id]);
+        if (oldRows.length) {
+            const oldTx = toCamel(oldRows[0]);
+            for (const item of oldTx.items) {
+                // Reversal: Jika dulu masuk, sekarang kurangi stok (sebelum di-update yang baru)
+                const sql = oldTx.type === 'IN' ? 'UPDATE inventory SET stock = stock - ? WHERE id = ?' : 'UPDATE inventory SET stock = stock + ? WHERE id = ?';
+                await conn.query(sql, [item.quantity, item.itemId]);
+            }
+        }
+
+        // 2. Update data transaksi
+        await conn.query('UPDATE transactions SET type=?, date=?, reference_number=?, supplier=?, notes=?, photos=?, items=?, performer=? WHERE id=?',
+            [tx.type, new Date(tx.date), tx.referenceNumber, tx.supplier, tx.notes, JSON.stringify(tx.photos || []), JSON.stringify(tx.items || []), tx.performer, req.params.id]);
+
+        // 3. Terapkan stok baru
+        for (const item of tx.items) {
+            const sql = tx.type === 'IN' ? 'UPDATE inventory SET stock = stock + ? WHERE id = ?' : 'UPDATE inventory SET stock = stock - ? WHERE id = ?';
+            await conn.query(sql, [item.quantity, item.itemId]);
+        }
+
+        await conn.commit();
+        sendRes(res, 200, true, "Transaksi diperbarui & stok disinkronkan");
+    } catch (e) {
+        await conn.rollback();
+        handleError(res, e, "Gagal memperbarui transaksi");
+    } finally { conn.release(); }
+});
+
 app.delete('/api/transactions/:id', async (req, res) => {
     const conn = await pool.getConnection();
     try {
@@ -208,7 +241,7 @@ app.post('/api/reject/master', async (req, res) => {
 });
 
 app.put('/api/reject/master/:id', async (req, res) => {
-    const id = decodeURIComponent(req.params.id).replace(/:/g, '-');
+    const id = decodeURIComponent(req.params.id).replace(/:/g, '-').trim();
     const i = req.body;
     try {
         await pool.query('UPDATE reject_master SET name=?, sku=?, category=?, base_unit=?, conversions=? WHERE id=?',
@@ -218,7 +251,7 @@ app.put('/api/reject/master/:id', async (req, res) => {
 });
 
 app.delete('/api/reject/master/:id', async (req, res) => {
-    const id = decodeURIComponent(req.params.id).replace(/:/g, '-');
+    const id = decodeURIComponent(req.params.id).replace(/:/g, '-').trim();
     try {
         await pool.query('DELETE FROM reject_master WHERE id=?', [id]);
         sendRes(res, 200, true, "Master Reject dihapus");
@@ -343,6 +376,5 @@ app.post('/api/system/reset', async (req, res) => {
 
 // --- START SERVER ---
 app.listen(PORT, '0.0.0.0', () => {
-    console.log(`SmartInventory All-in-One Backend v1.2.1 is running on PORT ${PORT}`);
-    console.log(`Bind address: 0.0.0.0 (Global Access)`);
+    console.log(`SmartInventory All-in-One Backend v1.2.2 is running on PORT ${PORT}`);
 });
