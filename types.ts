@@ -15,6 +15,7 @@ export interface InventoryItem {
   conversions?: InventoryUnitConversion[];
   price: number;
   lastUpdated: string;
+  status: 'active' | 'inactive'; // Added for Master Management
 }
 
 export type TransactionType = 'IN' | 'OUT';
@@ -31,10 +32,10 @@ export interface Transaction {
   id: string;
   type: TransactionType;
   date: string;
-  referenceNumber?: string; // Nomor Surat Jalan
-  supplier?: string; // Nama Supplier (Khusus IN)
+  referenceNumber?: string;
+  supplier?: string;
   notes: string;
-  photos?: string[]; // Base64 strings
+  photos?: string[];
   items: TransactionItem[];
   performer: string;
 }
@@ -42,47 +43,40 @@ export interface Transaction {
 export interface User {
   id: string;
   name: string;
-  username: string; // Added
-  password?: string; // Added (Optional because we might not want to display it)
+  username: string;
+  password?: string;
   role: 'admin' | 'staff';
   email: string;
 }
 
-export interface AIInsight {
-  summary: string;
-  alerts: string[];
-  recommendations: string[];
-}
-
-// --- REJECT MODULE TYPES ---
+// --- REJECT MODULE TYPES (STANDALONE) ---
 
 export interface RejectItem {
   id: string;
   name: string;
   sku: string;
   category: string;
-  baseUnit: string; // Satuan Utama (misal: KG)
-  conversions?: InventoryUnitConversion[]; // Konversi (misal: GR -> 0.001)
+  baseUnit: string;
+  conversions?: InventoryUnitConversion[];
+  status: 'active' | 'inactive';
 }
 
 export interface RejectTransactionItem {
   itemId: string;
   itemName: string;
   sku: string;
-  quantity: number; // Disimpan dalam baseUnit
-  inputQuantity: number; // Qty yang diinput user
-  inputUnit: string; // Unit yang dipilih user
+  quantity: number; // Stored in baseUnit
+  inputQuantity: number; // User input
+  inputUnit: string; // User selected unit
   reason: string;
 }
 
 export interface RejectTransaction {
   id: string;
-  date: string; // ISO String
+  date: string;
   items: RejectTransactionItem[];
   createdAt: string;
 }
-
-// --- MEDIA PLAYER TYPES ---
 
 export interface Playlist {
   id: string;

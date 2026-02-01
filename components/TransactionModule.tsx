@@ -151,6 +151,7 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
           let matched = items.find(item => item.sku.toLowerCase() === skuKey);
 
           if (!matched) {
+            // Fix: Added missing status property
             const autoItem: InventoryItem = {
               id: `AUTO-${Date.now()}-${Math.floor(Math.random()*1000)}`,
               name: rowName || `New Item (${rowSku})`,
@@ -161,7 +162,8 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({
               unit: rowUnit || 'pcs',
               price: 0,
               conversions: [],
-              lastUpdated: new Date().toISOString()
+              lastUpdated: new Date().toISOString(),
+              status: 'active'
             };
             await onAddItem(autoItem);
             matched = autoItem;
