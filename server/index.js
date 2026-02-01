@@ -195,7 +195,6 @@ app.post('/api/transactions', async (req, res) => {
             }
         }
 
-        // PERBAIKAN: Placeholder berjumlah 9, Parameter sekarang juga berjumlah 9
         const sqlTx = `INSERT INTO transactions (id, type, date, reference_number, supplier, notes, photos, items, performer) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`;
         await conn.query(sqlTx, [
             tx.id, 
@@ -219,7 +218,6 @@ app.post('/api/transactions', async (req, res) => {
         sendRes(res, 201, true, "Transaksi berhasil");
     } catch (err) {
         if (conn) await conn.rollback();
-        // Mengembalikan pesan error asli agar FE bisa menampilkan detail (misal: "Stok tidak cukup")
         sendRes(res, 400, false, err.message);
     } finally { if (conn) conn.release(); }
 });
@@ -289,16 +287,17 @@ app.get('/api/reject/master', async (req, res) => {
 app.post('/api/reject/master', async (req, res) => {
     const item = req.body;
     try {
+        // ERP HARDENING: Generate ID on server if client doesn't provide one
+        const finalId = item.id || `REJ-${Date.now()}-${Math.floor(Math.random()*1000)}`;
         const sql = `INSERT INTO reject_master (id, name, sku, category, base_unit, conversions) VALUES (?, ?, ?, ?, ?, ?)`;
-        await pool.query(sql, [item.id, item.name, item.sku, item.category, item.baseUnit, JSON.stringify(item.conversions || [])]);
-        sendRes(res, 201, true, "Master reject ditambahkan");
+        await pool.query(sql, [finalId, item.name, item.sku, item.category, item.baseUnit, JSON.stringify(item.conversions || [])]);
+        sendRes(res, 201, true, "Master reject ditambahkan", { id: finalId });
     } catch (err) { handleError(res, err); }
 });
 
 app.put('/api/reject/master/:id', async (req, res) => {
     try {
         const body = req.body || {};
-
         const payload = {
             name: String(body.name || '').trim(),
             sku: String(body.sku || '').trim(),
@@ -343,31 +342,17 @@ app.delete('/api/reject/master/:id', async (req, res) => {
         sendRes(res, 200, true, "Master reject dihapus");
     } catch (err) { handleError(res, err); }
 });
+
 // BULK DELETE REJECT MASTER
 app.delete('/api/reject/master/bulk', async (req, res) => {
     const { ids } = req.body;
-
     try {
-        // --- VALIDASI RINGAN (NON-DESTRUCTIVE) ---
         if (!Array.isArray(ids) || ids.length === 0) {
             return sendRes(res, 400, false, "ID master reject tidak valid");
         }
-
-        // --- EXECUTE BULK DELETE ---
-        const sql = `
-            DELETE FROM reject_master
-            WHERE id IN (?)
-        `;
-
+        const sql = `DELETE FROM reject_master WHERE id IN (?)`;
         const [result] = await pool.query(sql, [ids]);
-
-        sendRes(
-            res,
-            200,
-            true,
-            `${result.affectedRows} master reject berhasil dihapus`
-        );
-
+        sendRes(res, 200, true, `${result.affectedRows} master reject berhasil dihapus`);
     } catch (err) {
         handleError(res, err);
     }
