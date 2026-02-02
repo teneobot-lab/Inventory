@@ -81,3 +81,20 @@ export interface RejectTransaction {
   items: RejectTransactionItem[];
   createdAt: string;
 }
+
+// --- MEDIA PLAYER TYPES ---
+
+export interface Playlist {
+  id: string;
+  name: string;
+  createdAt?: string;
+}
+
+export interface PlaylistItem {
+  id: string;
+  playlistId: string;
+  title: string;
+  url: string;
+  videoId: string;
+  createdAt?: string;
+}
