@@ -58,21 +58,21 @@ export interface Transaction {
   fromWarehouseId?: string;
   toWarehouseId?: string;
   referenceNumber: string;
-  supplier?: string; 
+  supplier?: string; // Added for inbound tracking
   notes: string;
   items: TransactionLineItem[];
   performer: string;
-  photos?: string[]; 
+  photos?: string[]; // Added for documentation
 }
 
 export interface TransactionLineItem {
   itemId: string;
   itemName: string;
-  sku?: string; 
-  quantity: number; 
-  unit: string; 
-  factor: number; 
-  baseQuantity: number; 
+  sku?: string; // Added for lookup
+  quantity: number; // Input quantity
+  unit: string; // Selected unit name
+  factor: number; // Factor at time of transaction
+  baseQuantity: number; // quantity * factor
   batchNumber?: string;
 }
 
@@ -90,7 +90,7 @@ export interface RejectTransactionItem {
   itemId: string;
   itemName: string;
   sku: string;
-  quantity: number; 
+  quantity: number; // Base unit
   inputQuantity: number;
   inputUnit: string;
   reason: string;

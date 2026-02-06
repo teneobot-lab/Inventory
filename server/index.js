@@ -78,7 +78,7 @@ app.post('/api/inventory', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// 4. TRANSACTIONS & LEDGER (THE ENGINE)
+// 4. TRANSACTIONS & LEDGER
 app.get('/api/transactions', async (req, res) => {
     try {
         const [rows] = await pool.query('SELECT * FROM transactions ORDER BY date DESC');
@@ -92,11 +92,9 @@ app.post('/api/transactions', async (req, res) => {
     try {
         await conn.beginTransaction();
         
-        // 1. Insert Transaction Record
         const sqlTx = `INSERT INTO transactions (id, type, date, from_warehouse_id, to_warehouse_id, reference_number, supplier, notes, items, performer, photos) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
         await conn.query(sqlTx, [tx.id, tx.type, new Date(tx.date), tx.fromWarehouseId || null, tx.toWarehouseId || null, tx.referenceNumber, tx.supplier || null, tx.notes || '', JSON.stringify(tx.items), tx.performer, JSON.stringify(tx.photos || [])]);
 
-        // 2. Process Ledger and Update Global Inventory
         for (const item of tx.items) {
             const baseQty = item.baseQuantity || item.quantity;
             
@@ -109,15 +107,12 @@ app.post('/api/transactions', async (req, res) => {
                 await conn.query('UPDATE inventory SET stock = stock - ? WHERE id = ?', [baseQty, item.itemId]);
             }
             else if (tx.type === 'TRANSFER') {
-                // Out from Source
                 await conn.query('INSERT INTO stock_ledger (item_id, warehouse_id, tx_id, type, quantity) VALUES (?,?,?,?,?)', [item.itemId, tx.fromWarehouseId, tx.id, 'TRANSFER_OUT', baseQty]);
-                // In to Destination
                 await conn.query('INSERT INTO stock_ledger (item_id, warehouse_id, tx_id, type, quantity) VALUES (?,?,?,?,?)', [item.itemId, tx.toWarehouseId, tx.id, 'TRANSFER_IN', baseQty]);
-                // Global stock doesn't change for internal transfers, but ledger tracks locations
             }
             else if (tx.type === 'ADJUST') {
                 await conn.query('INSERT INTO stock_ledger (item_id, warehouse_id, tx_id, type, quantity) VALUES (?,?,?,?,?)', [item.itemId, tx.toWarehouseId || tx.fromWarehouseId, tx.id, 'ADJUSTMENT', baseQty]);
-                await conn.query('UPDATE inventory SET stock = ? WHERE id = ?', [baseQty, item.itemId]); // Force set stock
+                await conn.query('UPDATE inventory SET stock = ? WHERE id = ?', [baseQty, item.itemId]);
             }
         }
 
@@ -129,7 +124,7 @@ app.post('/api/transactions', async (req, res) => {
     } finally { conn.release(); }
 });
 
-// 5. LEDGER REPORTS (VIRTUALIZED DATA)
+// 5. LEDGER REPORTS
 app.get('/api/ledger', async (req, res) => {
     const { itemId, warehouseId } = req.query;
     try {
