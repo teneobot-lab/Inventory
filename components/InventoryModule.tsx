@@ -1,6 +1,6 @@
 
 import React, { useState, useRef } from 'react';
-import { InventoryItem, InventoryUnitConversion } from '../types';
+import { InventoryItem, UnitConversion } from '../types';
 import { Plus, Search, Edit2, Trash2, AlertCircle, Upload, Download, CheckSquare, X, PlusCircle, Trash, FileSpreadsheet } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
@@ -33,7 +33,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ items, onAddIt
     minStock: '',
     unit: '',
     price: '',
-    conversions: [] as InventoryUnitConversion[]
+    conversions: [] as UnitConversion[]
   });
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -128,6 +128,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ items, onAddIt
       stock: parseFloat(formData.stock) || 0,
       minStock: parseFloat(formData.minStock) || 0,
       unit: formData.unit,
+      baseUnit: formData.unit,
       price: parseFloat(formData.price) || 0,
       conversions: formData.conversions,
       lastUpdated: new Date().toISOString()
@@ -145,17 +146,17 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ items, onAddIt
   const addConversion = () => {
     setFormData({
       ...formData,
-      conversions: [...formData.conversions, { name: '', factor: 1 }]
+      conversions: [...formData.conversions, { id: Math.random().toString(36).substr(2, 9), name: '', factor: 1 }]
     });
   };
 
-  const updateConversion = (index: number, field: keyof InventoryUnitConversion, value: string) => {
+  const updateConversion = (index: number, field: keyof UnitConversion, value: string) => {
     const currentConversions = [...formData.conversions];
     if (field === 'factor') {
       const sanitized = value.replace(/[^0-9.]/g, '');
       currentConversions[index] = { ...currentConversions[index], factor: parseFloat(sanitized) || 0 };
     } else {
-      currentConversions[index] = { ...currentConversions[index], [field]: value };
+      currentConversions[index] = { ...currentConversions[index], [field]: value } as any;
     }
     setFormData({ ...formData, conversions: currentConversions });
   };
@@ -228,6 +229,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ items, onAddIt
           stock: isNaN(stock) ? 0 : stock,
           minStock: isNaN(minStock) ? 0 : minStock,
           unit,
+          baseUnit: unit,
           price: isNaN(price) ? 0 : price,
           conversions: [],
           lastUpdated: new Date().toISOString()

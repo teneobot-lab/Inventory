@@ -70,7 +70,7 @@ export const TransactionHistory: React.FC<TransactionHistoryProps> = ({ transact
       <div className="flex flex-col sm:flex-row justify-between items-center gap-4 bg-white dark:bg-slate-900 p-4 rounded-xl border dark:border-slate-800 shadow-sm">
         <h2 className="text-xl font-bold text-slate-800 dark:text-white">Riwayat Transaksi</h2>
         
-        <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+        <div className="flex flex-col sm:flex-row gap-3 w-full sm:auto">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400" size={16} />
             <input 

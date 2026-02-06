@@ -1,3 +1,4 @@
+
 import React, { useState, useRef } from 'react';
 import { RejectItem, RejectTransaction, RejectTransactionItem } from '../types';
 import { Search, Plus, Trash2, Save, ShoppingCart, Calendar, CheckCircle, Download, FileSpreadsheet } from 'lucide-react';
@@ -100,22 +101,6 @@ export const RejectTransactionModule: React.FC<RejectTransactionModuleProps> = (
     }
   };
 
-  const handleKeyDownQty = (e: React.KeyboardEvent) => {
-      if (e.key === 'Enter') {
-          // If reason is empty, maybe focus there? But prompt says "enter in qty -> barang masuk keranjang"
-          // However, for reject, reason is mandatory. 
-          // Let's assume for rapid input flow, user tabs to Reason or we might need to skip reason?
-          // The prompt says "filed ada date picker search bar unit qty dan alasan reject".
-          // If strict keyboard flow: Search -> Qty -> Reason -> Add.
-          // But prompt says "enter di qty, barang masuk keranjang". 
-          // I will make it: Enter Qty -> Focus Reason. Enter Reason -> Add to Cart -> Focus Search.
-          // Or if Reason is filled (or optional flow), direct add.
-          // Since Reason is required, let's focus Reason on Qty Enter.
-          // WAIT: prompt says "enter di qty,barang masuk keranjang,fokus pindah ke searchbar lagi".
-          // I will follow prompt. If reason is empty, I'll use default dash "-".
-      }
-  };
-
   const handleKeyDownReason = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
         e.preventDefault();
@@ -171,7 +156,8 @@ export const RejectTransactionModule: React.FC<RejectTransactionModuleProps> = (
                 name: name || `New Reject Item (${sku})`,
                 sku: sku,
                 category: 'Uncategorized',
-                baseUnit: unit
+                baseUnit: unit,
+                conversions: []
             };
             onAddItem(newMaster);
             matched = newMaster;

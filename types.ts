@@ -1,93 +1,113 @@
 
-export interface InventoryUnitConversion {
-  name: string;
-  factor: number;
-}
+export type UnitType = 'BASE' | 'CONVERSION';
 
-export interface InventoryItem {
+export interface UnitConversion {
   id: string;
   name: string;
-  sku: string;
-  category: string;
-  stock: number;
-  minStock: number;
-  unit: string;
-  conversions?: InventoryUnitConversion[];
-  price: number;
-  lastUpdated: string;
-}
-
-export type TransactionType = 'IN' | 'OUT';
-
-export interface TransactionItem {
-  itemId: string;
-  itemName: string;
-  sku: string;
-  quantity: number;
-  unit: string;
-}
-
-export interface Transaction {
-  id: string;
-  type: TransactionType;
-  date: string;
-  referenceNumber?: string; // Nomor Surat Jalan
-  supplier?: string; // Nama Supplier (Khusus IN)
-  notes: string;
-  photos?: string[]; // Base64 strings
-  items: TransactionItem[];
-  performer: string;
+  factor: number; // Factor to convert to base unit
 }
 
 export interface User {
   id: string;
   name: string;
-  username: string; // Added
-  password?: string; // Added (Optional because we might not want to display it)
+  username: string;
+  password?: string;
   role: 'admin' | 'staff';
   email: string;
 }
 
-export interface AIInsight {
-  summary: string;
-  alerts: string[];
-  recommendations: string[];
+export interface Warehouse {
+  id: string;
+  name: string;
+  location: string;
 }
 
-// --- REJECT MODULE TYPES ---
+export interface InventoryItem {
+  id: string;
+  sku: string;
+  name: string;
+  category: string;
+  baseUnit: string;
+  unit: string; // Display unit / base unit name
+  conversions: UnitConversion[];
+  price: number;
+  minStock: number;
+  stock: number; // Current stock level
+  lastUpdated?: string;
+}
 
+export type LedgerType = 'INBOUND' | 'OUTBOUND' | 'TRANSFER_IN' | 'TRANSFER_OUT' | 'ADJUSTMENT';
+
+export interface LedgerEntry {
+  id: string;
+  itemId: string;
+  warehouseId: string;
+  type: LedgerType;
+  quantity: number; // Always in BASE UNIT
+  referenceId: string; // ID of the transaction
+  batchNumber?: string;
+  expiryDate?: string;
+  timestamp: string;
+  performer: string;
+}
+
+export interface Transaction {
+  id: string;
+  type: 'IN' | 'OUT' | 'TRANSFER' | 'ADJUST';
+  date: string;
+  fromWarehouseId?: string;
+  toWarehouseId?: string;
+  referenceNumber: string;
+  supplier?: string; // Added for inbound tracking
+  notes: string;
+  items: TransactionLineItem[];
+  performer: string;
+  photos?: string[]; // Added for documentation
+}
+
+export interface TransactionLineItem {
+  itemId: string;
+  itemName: string;
+  sku?: string; // Added for lookup
+  quantity: number; // Input quantity
+  unit: string; // Selected unit name
+  factor: number; // Factor at time of transaction
+  baseQuantity: number; // quantity * factor
+  batchNumber?: string;
+}
+
+// --- Reject Module Types ---
 export interface RejectItem {
   id: string;
   name: string;
   sku: string;
   category: string;
-  baseUnit: string; // Satuan Utama (misal: KG)
-  conversions?: InventoryUnitConversion[]; // Konversi (misal: GR -> 0.001)
+  baseUnit: string;
+  conversions: UnitConversion[];
 }
 
 export interface RejectTransactionItem {
   itemId: string;
   itemName: string;
   sku: string;
-  quantity: number; // Disimpan dalam baseUnit
-  inputQuantity: number; // Qty yang diinput user
-  inputUnit: string; // Unit yang dipilih user
+  quantity: number; // Base unit
+  inputQuantity: number;
+  inputUnit: string;
   reason: string;
 }
 
 export interface RejectTransaction {
   id: string;
-  date: string; // ISO String
+  date: string;
   items: RejectTransactionItem[];
   createdAt: string;
 }
 
-// --- MEDIA PLAYER TYPES ---
-
+// --- Media Player Types ---
 export interface Playlist {
   id: string;
   name: string;
-  createdAt?: string;
+  createdAt: string;
 }
 
 export interface PlaylistItem {
@@ -96,5 +116,5 @@ export interface PlaylistItem {
   title: string;
   url: string;
   videoId: string;
-  createdAt?: string;
+  createdAt: string;
 }

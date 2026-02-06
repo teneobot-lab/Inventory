@@ -1,5 +1,6 @@
+
 import React, { useState, useRef } from 'react';
-import { RejectItem, InventoryUnitConversion } from '../types';
+import { RejectItem, UnitConversion } from '../types';
 import { Plus, Search, Trash2, Upload, X, Save, FileSpreadsheet, PlusCircle } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
@@ -44,13 +45,13 @@ export const RejectMasterData: React.FC<RejectMasterDataProps> = ({ items, onAdd
     const currentConversions = formData.conversions || [];
     setFormData({
       ...formData,
-      conversions: [...currentConversions, { name: '', factor: 1 }]
+      conversions: [...currentConversions, { id: Math.random().toString(36).substr(2, 9), name: '', factor: 1 }]
     });
   };
 
-  const updateConversion = (index: number, field: keyof InventoryUnitConversion, value: string | number) => {
+  const updateConversion = (index: number, field: keyof UnitConversion, value: string | number) => {
     const currentConversions = [...(formData.conversions || [])];
-    currentConversions[index] = { ...currentConversions[index], [field]: value };
+    currentConversions[index] = { ...currentConversions[index], [field]: value } as any;
     setFormData({ ...formData, conversions: currentConversions });
   };
 
@@ -93,6 +94,7 @@ export const RejectMasterData: React.FC<RejectMasterDataProps> = ({ items, onAdd
         // Simple logic: if row[4] (AltUnit) and row[5] (Factor) exist, add conversion
         if (row[4] && row[5]) {
            newItem.conversions?.push({
+             id: Math.random().toString(36).substr(2, 9),
              name: String(row[4]),
              factor: parseFloat(String(row[5]))
            });

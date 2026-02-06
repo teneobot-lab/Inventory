@@ -65,7 +65,7 @@ export const ReportModule: React.FC<ReportModuleProps> = ({ items, transactions 
           reference: t.referenceNumber || '-',
           supplier: t.supplier || '-',
           itemName: item.itemName,
-          sku: item.sku,
+          sku: item.sku || '-',
           quantity: item.quantity,
           unit: item.unit,
           notes: t.notes
@@ -84,9 +84,6 @@ export const ReportModule: React.FC<ReportModuleProps> = ({ items, transactions 
     return items.map(item => {
       // 1. Calculate transactions BEFORE the period to find Opening Balance
       // Opening = Current - (TotalIn_After_Start) + (TotalOut_After_Start)
-      // This is dynamic. 
-      // Actually, standard way is: StartBalance = Initial + sum(in_before) - sum(out_before)
-      // Since we don't have a "historical snapshots" table, we work backwards from the current stock.
       
       let inAfterStart = 0;
       let outAfterStart = 0;

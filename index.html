@@ -4,92 +4,72 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>SmartInventory Pro</title>
+    <title>Warehouse Pro Enterprise</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <script>
-      // Senior Fix: Provide global process object to prevent "process is not defined" error in browser
       window.process = { env: { API_KEY: "" } };
-      
       tailwind.config = {
         darkMode: 'class',
         theme: {
           extend: {
             colors: {
-              slate: { 850: '#1e293b' }
+              slate: { 850: '#1e293b', 950: '#020617' },
+              emerald: { 500: '#10b981', 600: '#059669' }
             },
-            animation: {
-              'fade-in-up': 'fadeInUp 0.5s ease-out forwards',
-              'scale-in': 'scaleIn 0.3s ease-out forwards',
-            },
-            keyframes: {
-              fadeInUp: {
-                '0%': { opacity: '0', transform: 'translateY(20px)' },
-                '100%': { opacity: '1', transform: 'translateY(0)' },
-              },
-              scaleIn: {
-                '0%': { transform: 'scale(0.9)', opacity: '0' },
-                '100%': { transform: 'scale(1)', opacity: '1' },
-              }
+            fontFamily: {
+              sans: ['Inter', 'sans-serif'],
+              mono: ['JetBrains Mono', 'monospace']
             }
           }
         }
       }
     </script>
     <style>
-      body { font-family: 'Inter', sans-serif; margin: 0; padding: 0; }
-      .dark body { background-color: #0f172a; color: #f1f5f9; }
-      
-      /* Hide number input spinners */
-      input::-webkit-outer-spin-button,
-      input::-webkit-inner-spin-button {
-        -webkit-appearance: none;
-        margin: 0;
-      }
-      input[type=number] {
-        -moz-appearance: textfield;
-      }
-
-      /* Loading Screen Style */
-      #root:empty {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        height: 100vh;
-        background: #0f172a;
-      }
+      body { font-family: 'Inter', sans-serif; }
+      .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+      .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+      .custom-scrollbar::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; }
       #root:empty::after {
         content: "";
-        width: 40px;
-        height: 40px;
-        border: 4px solid #1e293b;
-        border-top-color: #3b82f6;
+        position: fixed;
+        top: 50%; left: 50%;
+        width: 40px; height: 40px;
+        border: 3px solid #1e293b;
+        border-top-color: #10b981;
         border-radius: 50%;
-        animation: spin 1s linear infinite;
+        animation: spin 0.8s linear infinite;
       }
-      @keyframes spin {
-        to { transform: rotate(360deg); }
-      }
+      @keyframes spin { to { transform: translate(-50%, -50%) rotate(360deg); } }
     </style>
-  <script type="importmap">
+    <script type="importmap">
 {
   "imports": {
-    "lucide-react": "https://esm.sh/lucide-react@^0.563.0",
-    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
-    "react/": "https://esm.sh/react@^19.2.3/",
     "react": "https://esm.sh/react@^19.2.3",
+    "react-dom": "https://esm.sh/react-dom@^19.2.3",
+    "lucide-react": "https://esm.sh/lucide-react@^0.563.0",
     "recharts": "https://esm.sh/recharts@^3.7.0",
-    "@vitejs/plugin-react": "https://esm.sh/@vitejs/plugin-react@^5.1.2",
-    "vite": "https://esm.sh/vite@^7.3.1",
     "@google/genai": "https://esm.sh/@google/genai@^1.38.0",
-    "jspdf": "https://esm.sh/jspdf@^4.0.0",
-    "xlsx": "https://esm.sh/xlsx@^0.18.5",
-    "jspdf-autotable": "https://esm.sh/jspdf-autotable@^5.0.7"
+    "decimal.js": "https://esm.sh/decimal.js@^10.4.3",
+    "dayjs": "https://esm.sh/dayjs@^1.11.10",
+    "fuse.js": "https://esm.sh/fuse.js@^7.0.0",
+    "exceljs": "https://esm.sh/exceljs@^4.4.0",
+    "echarts": "https://esm.sh/echarts@^5.4.3",
+    "zustand": "https://esm.sh/zustand@^4.5.0",
+    "@tanstack/react-table": "https://esm.sh/@tanstack/react-table@^8.11.0",
+    "@tanstack/react-virtual": "https://esm.sh/@tanstack/react-virtual@^3.0.0",
+    "jspdf": "https://esm.sh/jspdf@^4.1.0",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.4/",
+    "react/": "https://esm.sh/react@^19.2.4/",
+    "vite": "https://esm.sh/vite@^7.3.1",
+    "@vitejs/plugin-react": "https://esm.sh/@vitejs/plugin-react@^5.1.3",
+    "jspdf-autotable": "https://esm.sh/jspdf-autotable@^5.0.7",
+    "xlsx": "https://esm.sh/xlsx@^0.18.5"
   }
 }
 </script>
-</head>
-  <body class="bg-slate-50 text-slate-900 antialiased transition-colors duration-300">
+  </head>
+  <body class="bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-300">
     <div id="root"></div>
     <script type="module" src="/index.tsx"></script>
   </body>

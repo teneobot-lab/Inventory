@@ -6,7 +6,7 @@ import { Playlist, PlaylistItem } from '../types';
 
 interface MediaPlayerProps {
   isOpen: boolean;
-  onClose: () => void;
+  onClose: void;
   onPlayingChange: (isPlaying: boolean) => void;
 }
 
@@ -282,7 +282,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({ isOpen, onClose, onPla
                          </button>
                      )}
                  </div>
-                 <button onClick={onClose} className="text-slate-400 hover:text-white p-2 hover:bg-slate-800 rounded-full transition-colors">
+                 <button onClick={() => (onClose as any)()} className="text-slate-400 hover:text-white p-2 hover:bg-slate-800 rounded-full transition-colors">
                      <X size={24} />
                  </button>
              </div>
