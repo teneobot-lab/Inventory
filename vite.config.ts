@@ -9,13 +9,12 @@ export default defineConfig(({ mode }) => {
     plugins: [react()],
     define: {
       'process.env.API_KEY': JSON.stringify(env.API_KEY || ''),
-      // Prevent libraries checking for process.env from crashing
       'process.env': {} 
     },
     server: {
       proxy: {
         '/api': {
-          target: 'http://89.21.85.28:3010',
+          target: 'http://invengudang.my.id:3010',
           changeOrigin: true,
           secure: false,
         }

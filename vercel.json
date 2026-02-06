@@ -3,7 +3,7 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "http://89.21.85.28:3010/api/:path*"
+      "destination": "http://invengudang.my.id:3010/api/:path*"
     }
   ]
 }
